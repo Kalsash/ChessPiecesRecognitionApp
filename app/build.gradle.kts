@@ -40,8 +40,14 @@ android {
 }
 
 dependencies {
+    //implementation("com.yalantis:ucrop:2.3.0")
     //implementation("org.tensorflow:tensorflow-lite:2.12.0")
-    implementation("io.coil-kt:coil-compose:2.0.0")
+//    implementation("io.github.mr0xf00:easycrop:0.1.0")
+//    implementation("io.coil-kt:coil-compose:2.0.0")
+
+    implementation("com.github.yalantis:ucrop:2.2.6")
+
+    implementation ("io.coil-kt:coil-compose:2.0.0")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
@@ -51,6 +57,7 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation(libs.litert)
+    implementation(libs.play.services.cast.framework)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
