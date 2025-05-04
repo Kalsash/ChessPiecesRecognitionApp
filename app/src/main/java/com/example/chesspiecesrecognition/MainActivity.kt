@@ -8,15 +8,32 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.Button
-import androidx.compose.material3.Text
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import coil.compose.rememberAsyncImagePainter
 import com.yalantis.ucrop.UCrop
+import kotlinx.coroutines.launch
 import org.tensorflow.lite.Interpreter
 import java.io.File
 import java.io.IOException
@@ -50,11 +67,12 @@ class MainActivity : ComponentActivity() {
                     croppedImageUri = croppedImageUri,
                     onCropImage = { uri -> startCrop(uri) },
                     onShowHistory = { showHistory = true },
-                    viewModel = historyViewModel // Передаем ViewModel
+                    viewModel = historyViewModel
                 )
             }
         }
     }
+
     private fun loadModel() {
         try {
             val assetFileDescriptor = assets.openFd("chess_piece_recognition_model.tflite")
@@ -105,55 +123,164 @@ fun MainScreen(
     croppedImageUri: Uri?,
     onCropImage: (Uri) -> Unit,
     onShowHistory: () -> Unit,
-    viewModel: HistoryViewModel 
+    viewModel: HistoryViewModel
 ) {
+    val context = LocalContext.current
+    val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
+
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
 
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
-        uri?.let {
+        if (uri != null) {
             selectedImageUri = uri
             onCropImage(uri)
+            coroutineScope.launch {
+                snackbarHostState.showSnackbar("Фото выбрано успешно")
+            }
+        } else {
+            coroutineScope.launch {
+                snackbarHostState.showSnackbar("Не удалось выбрать фото")
+            }
         }
     }
 
-    Column(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
+    Scaffold(
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
+    ) { padding ->
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Фон на весь экран
+            ChessboardBackground(modifier = Modifier.fillMaxSize())
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.SpaceBetween,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.Black.copy(alpha = 0.5f), shape = RoundedCornerShape(8.dp))
+                        .padding(8.dp)
+                ) {
+                    Text(
+                        text = "♔ Chess Pieces Recognition ♔",
+                        color = Color.White,
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Bold,
+                        style = TextStyle(shadow = Shadow(color = Color.Black, blurRadius = 4f))
+                    )
+                }
+
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    if (croppedImageUri != null) {
+                        Image(
+                            painter = rememberAsyncImagePainter(croppedImageUri),
+                            contentDescription = "Выбранное фото",
+                            modifier = Modifier
+                                .size(200.dp)
+                                .padding(8.dp)
+                                .background(Color.Black.copy(alpha = 0.3f), shape = RoundedCornerShape(12.dp))
+                        )
+                    }
+
+                    ActionButton(
+                        text = "Выбрать фото",
+                        icon = Icons.Default.Add
+                    ) {
+                        launcher.launch("image/*")
+                    }
+
+                    ActionButton(
+                        text = "Обрезать фото",
+                        icon = Icons.Default.Edit
+                    ) {
+                        if (selectedImageUri != null) {
+                            onCropImage(selectedImageUri!!)
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar("Обрезка запущена")
+                            }
+                        } else {
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar("Сначала выберите фото")
+                            }
+                        }
+                    }
+
+                    ActionButton(
+                        text = "Распознать фигуры",
+                        icon = Icons.Default.Search
+                    ) {
+                        if (croppedImageUri != null) {
+                            recognizeFromImage(context, tfLiteInterpreter, croppedImageUri, viewModel)
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar("Распознавание запущено")
+                            }
+                        } else {
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar("Сначала выберите и обрежьте фото")
+                            }
+                        }
+                    }
+
+
+
+                    ActionButton(
+                        text = "История распознаваний",
+                        icon = Icons.Default.List
+                    ) {
+                        onShowHistory()
+                    }
+                }
+
+                Text(
+                    text = "Powered by AI",
+                    color = Color.DarkGray.copy(alpha = 0.9f),
+                    fontSize = 16.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ActionButton(text: String, icon: ImageVector, onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .background(Color.Black.copy(alpha = 0.5f), shape = RoundedCornerShape(12.dp)),
+        colors = ButtonDefaults.buttonColors(containerColor = Color.Black.copy(alpha = 0.6f)),
+        shape = RoundedCornerShape(12.dp)
     ) {
-        Button(onClick = { launcher.launch("image/*") }) {
-            Text("Выберите фото")
-        }
+        Icon(icon, contentDescription = text, modifier = Modifier.size(24.dp))
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(text, color = Color.White)
+    }
+}
 
-        Spacer(modifier = Modifier.height(8.dp))
-
-        val context = LocalContext.current
-        Button(onClick = {
-            croppedImageUri?.let {
-                recognizeFromImage(context, tfLiteInterpreter, it, viewModel = viewModel)
-            } ?: run {
-                Log.e("MainScreen", "Cropped image is null")
+@Composable
+fun ChessboardBackground(modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val squareSize = size.minDimension*3 / 8f
+        for (row in 0..7) {
+            for (col in 0..7) {
+                val isDark = (row + col) % 2 == 1
+                drawRect(
+                    color = if (isDark) Color(0xFF2C5364) else Color(0xFFECECEC),
+                    topLeft = androidx.compose.ui.geometry.Offset(col * squareSize, row * squareSize),
+                    size = Size(squareSize, squareSize)
+                )
             }
-        }) {
-            Text("Распознать фигуры")
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Button(onClick = {
-            selectedImageUri?.let {
-                onCropImage(it)
-            }
-        }) {
-            Text("Обрезать Фото")
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Новая кнопка для истории
-        Button(onClick = onShowHistory) {
-            Text("История распознаваний")
         }
     }
 }

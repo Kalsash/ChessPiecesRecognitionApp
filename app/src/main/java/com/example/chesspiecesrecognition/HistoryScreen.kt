@@ -42,7 +42,11 @@ fun HistoryScreen(
             }
         )
 
-        LazyColumn(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier
+                .weight(1f) // важно: чтобы список не вытеснял кнопку вниз
+                .fillMaxWidth()
+        ) {
             items(historyItems) { item ->
                 HistoryItemCard(
                     item = item,
@@ -51,8 +55,21 @@ fun HistoryScreen(
                 )
             }
         }
+
+        // Кнопка возврата в главное меню
+        Button(
+            onClick = onBack,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Icon(Icons.Default.ArrowBack, contentDescription = "Назад")
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Вернуться на главный экран")
+        }
     }
 }
+
 
 @Composable
 fun HistoryItemCard(
