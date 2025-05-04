@@ -64,7 +64,8 @@ val chessPositions = mapOf(
     64 to "H1", 56 to "H2", 48 to "H3", 40 to "H4", 32 to "H5", 24 to "H6", 16 to "H7", 8 to "H8"
 )
 
-fun recognizeFromImage(context: Context, tfLiteInterpreter: Interpreter, imageUri: Uri) {
+fun recognizeFromImage(context: Context, tfLiteInterpreter: Interpreter, imageUri: Uri,
+                       viewModel: HistoryViewModel) {
     try {
         val imageStream = context.contentResolver.openInputStream(imageUri)
         val originalBitmap = BitmapFactory.decodeStream(imageStream)
@@ -150,6 +151,8 @@ fun recognizeFromImage(context: Context, tfLiteInterpreter: Interpreter, imageUr
         val fen = fenParts.joinToString("/") + " w - - 0 1"
         val url = "https://lichess.org/editor/$fen"
         Toast.makeText(context, "Open URL: $url", Toast.LENGTH_LONG).show()
+
+        viewModel.addHistoryItem(imageUri.toString(), url)
 
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
         context.startActivity(intent)

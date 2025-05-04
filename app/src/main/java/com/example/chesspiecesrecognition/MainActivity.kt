@@ -20,29 +20,47 @@ import com.yalantis.ucrop.UCrop
 import org.tensorflow.lite.Interpreter
 import java.io.File
 import java.io.IOException
+import java.nio.channels.FileChannel
 
 class MainActivity : ComponentActivity() {
     private lateinit var tfLiteInterpreter: Interpreter
     private var croppedImageUri by mutableStateOf<Uri?>(null)
+    private lateinit var historyViewModel: HistoryViewModel
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         loadModel()
+        historyViewModel = HistoryViewModel(application)
+
         setContent {
-            MainScreen(
-                tfLiteInterpreter = tfLiteInterpreter,
-                croppedImageUri = croppedImageUri,
-                onCropImage = { uri -> startCrop(uri) }
-            )
+            var showHistory by remember { mutableStateOf(false) }
+
+            if (showHistory) {
+                HistoryScreen(
+                    onBack = { showHistory = false },
+                    onItemClick = { url ->
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                        startActivity(intent)
+                    },
+                    viewModel = historyViewModel
+                )
+            } else {
+                MainScreen(
+                    tfLiteInterpreter = tfLiteInterpreter,
+                    croppedImageUri = croppedImageUri,
+                    onCropImage = { uri -> startCrop(uri) },
+                    onShowHistory = { showHistory = true },
+                    viewModel = historyViewModel // Передаем ViewModel
+                )
+            }
         }
     }
-
     private fun loadModel() {
         try {
             val assetFileDescriptor = assets.openFd("chess_piece_recognition_model.tflite")
             val inputStream = assetFileDescriptor.createInputStream()
             val byteBuffer = inputStream.channel.map(
-                java.nio.channels.FileChannel.MapMode.READ_ONLY,
+                FileChannel.MapMode.READ_ONLY,
                 assetFileDescriptor.startOffset,
                 assetFileDescriptor.declaredLength
             )
@@ -85,7 +103,9 @@ class MainActivity : ComponentActivity() {
 fun MainScreen(
     tfLiteInterpreter: Interpreter,
     croppedImageUri: Uri?,
-    onCropImage: (Uri) -> Unit
+    onCropImage: (Uri) -> Unit,
+    onShowHistory: () -> Unit,
+    viewModel: HistoryViewModel 
 ) {
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
 
@@ -112,7 +132,7 @@ fun MainScreen(
         val context = LocalContext.current
         Button(onClick = {
             croppedImageUri?.let {
-                recognizeFromImage(context, tfLiteInterpreter, it)
+                recognizeFromImage(context, tfLiteInterpreter, it, viewModel = viewModel)
             } ?: run {
                 Log.e("MainScreen", "Cropped image is null")
             }
@@ -128,6 +148,12 @@ fun MainScreen(
             }
         }) {
             Text("Обрезать Фото")
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Новая кнопка для истории
+        Button(onClick = onShowHistory) {
+            Text("История распознаваний")
         }
     }
 }
