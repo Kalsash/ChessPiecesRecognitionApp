@@ -5,6 +5,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.provider.MediaStore
 import android.widget.Toast
 import org.tensorflow.lite.Interpreter
 import java.io.IOException
@@ -152,7 +153,10 @@ fun recognizeFromImage(context: Context, tfLiteInterpreter: Interpreter, imageUr
         val url = "https://lichess.org/editor/$fen"
         Toast.makeText(context, "Open URL: $url", Toast.LENGTH_LONG).show()
 
-        viewModel.addHistoryItem(imageUri.toString(), url)
+        val bitmap = MediaStore.Images.Media.getBitmap(context.contentResolver, imageUri)
+        val savedImagePath = FileUtils.saveBitmapToInternalStorage(context, bitmap)
+
+        viewModel.addHistoryItem(savedImagePath, url)
 
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
         context.startActivity(intent)

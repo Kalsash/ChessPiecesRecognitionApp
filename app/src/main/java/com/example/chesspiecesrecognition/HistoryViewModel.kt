@@ -19,9 +19,11 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun deleteHistoryItem(id: Long) {
+    fun deleteHistoryItem(id: Long, imagePath: String) {
         viewModelScope.launch {
             historyDao.deleteHistoryItem(id)
+            FileUtils.deleteImageFile(imagePath)
         }
     }
+
 }
