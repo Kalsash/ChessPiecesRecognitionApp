@@ -242,7 +242,7 @@ fun MainScreen(
                 }
 
                 Text(
-                    text = "Powered by AI",
+                    text = "ChessReco",
                     color = Color.DarkGray.copy(alpha = 0.9f),
                     fontSize = 16.sp
                 )

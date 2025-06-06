@@ -146,22 +146,3 @@ fun HistoryItemCard(
         }
     }
 }
-
-@Composable
-fun rememberImageBitmap(imageUri: String): androidx.compose.ui.graphics.ImageBitmap? {
-    val context = LocalContext.current
-    return remember(imageUri) {
-        try {
-            val file = File(imageUri)
-            if (file.exists()) {
-                val bitmap = BitmapFactory.decodeFile(file.absolutePath)
-                bitmap?.asImageBitmap()
-            } else {
-                null
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
-        }
-    }
-}
