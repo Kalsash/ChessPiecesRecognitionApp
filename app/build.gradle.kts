@@ -43,6 +43,7 @@ android {
 dependencies {
 
     implementation("androidx.compose.material3:material3:1.2.0")
+    implementation(libs.play.services.games)
 
     val room_version = "2.6.1"
 
@@ -79,6 +80,8 @@ dependencies {
 
     implementation("com.github.yalantis:ucrop:2.2.6")
     implementation ("io.coil-kt:coil-compose:2.0.0")
+    implementation ("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.4")
+    implementation ("com.github.bhlangonijr:chesslib:1.3.2")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)

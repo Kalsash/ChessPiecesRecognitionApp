@@ -131,7 +131,7 @@ fun MainScreen(
 
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
 
-    val launcher = rememberLauncherForActivityResult(
+    val imageLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         if (uri != null) {
@@ -147,11 +147,46 @@ fun MainScreen(
         }
     }
 
+    val videoLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            coroutineScope.launch {
+                try {
+                    snackbarHostState.showSnackbar("Обработка видео...")
+                    val processor = VideoToPGNProcessor(context, tfLiteInterpreter)
+                    processor.processVideoToPGN(uri) { pgn ->
+                        if (pgn.startsWith("Error:")) {
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar(pgn)
+                            }
+                        } else {
+                            val url = "https://lichess.org/paste?pgn=${Uri.encode(pgn)}"
+                            viewModel.addHistoryItem("video_processing", url)
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                            context.startActivity(intent)
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar("PGN создан успешно")
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    coroutineScope.launch {
+                        snackbarHostState.showSnackbar("Ошибка обработки видео: ${e.message}")
+                    }
+                }
+            }
+        } else {
+            coroutineScope.launch {
+                snackbarHostState.showSnackbar("Не удалось выбрать видео")
+            }
+        }
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize()) {
-            // Фон на весь экран
             ChessboardBackground(modifier = Modifier.fillMaxSize())
 
             Column(
@@ -196,7 +231,7 @@ fun MainScreen(
                         text = "Выбрать фото",
                         icon = Icons.Default.Add
                     ) {
-                        launcher.launch("image/*")
+                        imageLauncher.launch("image/*")
                     }
 
                     ActionButton(
@@ -220,7 +255,7 @@ fun MainScreen(
                         icon = Icons.Default.Search
                     ) {
                         if (croppedImageUri != null) {
-                            recognizeFromImage(context, tfLiteInterpreter, croppedImageUri, viewModel)
+                            recognizeFromImage(context, tfLiteInterpreter, croppedImageUri!!, viewModel)
                             coroutineScope.launch {
                                 snackbarHostState.showSnackbar("Распознавание запущено")
                             }
@@ -231,7 +266,12 @@ fun MainScreen(
                         }
                     }
 
-
+                    ActionButton(
+                        text = "Обработать видео",
+                        icon = Icons.Default.Search
+                    ) {
+                        videoLauncher.launch("video/*")
+                    }
 
                     ActionButton(
                         text = "История распознаваний",
