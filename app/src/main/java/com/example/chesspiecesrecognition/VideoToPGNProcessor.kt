@@ -29,9 +29,8 @@ class VideoToPGNProcessor(private val context: Context, private val tfLiteInterp
             val fens = recognizeFensFromFrames(framesDir)
             // Log.d("FEN_LIST", "FENs: ${fens.joinToString("\n")}")
             val correctedFens = correctFenSequence(fens)
-            //Log.d("COR_FEN_LIST", "FENs: ${correctedFens.joinToString("\n")}")
+            //Log.d("COR_FEN_LIST", "FENs:\n${correctedFens.joinToString("\n")}")
             val pgn = generatePGN(correctedFens)
-
             callback(pgn)
             framesDir.deleteRecursively()
         } catch (e: Exception) {
@@ -254,7 +253,25 @@ class VideoToPGNProcessor(private val context: Context, private val tfLiteInterp
                 }
             }
 
-            if (changes.count() == 0) continue
+            val newChanges = mutableListOf<Triple<Square, Piece?, Piece?>>()
+            for (c in changes)
+            {
+                var flag = false
+                for (move in board.legalMoves())
+                {
+                    if (move.from == c.first)
+                        flag = true
+                }
+                if (flag == true)
+                {
+                    newChanges.add(c)
+                }
+                else
+                {
+                    recognitionErrors.add(c)
+                }
+            }
+            if (newChanges.isEmpty()) continue
 
             var bestMove: Move? = null
             var bestDiffCount = Int.MAX_VALUE
@@ -284,13 +301,10 @@ class VideoToPGNProcessor(private val context: Context, private val tfLiteInterp
                 corrected.add(normalizeFen(board.fen))
             }
             else {
-                for (j in 0 until changes.size) {
-                    recognitionErrors.add(changes[j])
-                }
                 corrected.add(normalizeFen(board.fen))
             }
         }
-
+        println(recognitionErrors)
         return corrected.distinct()
     }
 
