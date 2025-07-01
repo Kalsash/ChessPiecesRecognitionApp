@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.RectF
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.MediaStore
@@ -13,6 +14,9 @@ import com.github.bhlangonijr.chesslib.Board
 import com.github.bhlangonijr.chesslib.Piece
 import com.github.bhlangonijr.chesslib.Square
 import com.github.bhlangonijr.chesslib.move.Move
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import org.tensorflow.lite.Interpreter
 import java.io.File
 import java.io.FileOutputStream
@@ -22,24 +26,63 @@ import java.nio.ByteOrder
 import java.text.SimpleDateFormat
 import java.util.*
 
-class VideoToPGNProcessor(private val context: Context, private val tfLiteInterpreter: Interpreter) {
+class VideoToPGNProcessor(
+    private val context: Context,
+    private val tfLiteInterpreter: Interpreter,
+    private val cropRect: RectF? = null,
+    private val onProgressUpdate: (Int, String) -> Unit = { _, _ -> }
+) {
+    private var isCancelled = false
+
+    fun cancel() {
+        isCancelled = true
+    }
+
     fun processVideoToPGN(videoUri: Uri, callback: (String) -> Unit) {
-        try {
-            val framesDir = extractFramesFromVideo(videoUri)
-            val fens = recognizeFensFromFrames(framesDir)
-            // Log.d("FEN_LIST", "FENs: ${fens.joinToString("\n")}")
-            val correctedFens = correctFenSequence(fens)
-            //Log.d("COR_FEN_LIST", "FENs:\n${correctedFens.joinToString("\n")}")
-            val pgn = generatePGN(correctedFens)
-            callback(pgn)
-            framesDir.deleteRecursively()
-        } catch (e: Exception) {
-            Log.e("VideoToPGN", "Error processing video", e)
-            callback("Error: ${e.message}")
+        Log.d("VideoProcessing", "processVideoToPGN(")
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                if (isCancelled) return@launch
+
+                onProgressUpdate(0, "Извлечение кадров...")
+                val framesDir = extractFramesFromVideo(videoUri)
+
+                if (isCancelled) {
+                    framesDir.deleteRecursively()
+                    return@launch
+                }
+
+                onProgressUpdate(30, "Распознавание позиций...")
+                val fens = recognizeFensFromFrames(framesDir)
+
+                if (isCancelled) {
+                    framesDir.deleteRecursively()
+                    return@launch
+                }
+
+                onProgressUpdate(60, "Коррекция последовательности...")
+                val correctedFens = correctFenSequence(fens)
+
+                if (isCancelled) {
+                    framesDir.deleteRecursively()
+                    return@launch
+                }
+
+                onProgressUpdate(80, "Генерация PGN...")
+                val pgn = generatePGN(correctedFens)
+
+                onProgressUpdate(100, "Завершено!")
+                callback(pgn)
+                framesDir.deleteRecursively()
+            } catch (e: Exception) {
+                Log.d("VideoProcessing", "processVideoToPGN Error")
+                callback("Error: ${e.message}")
+            }
         }
     }
 
     private fun extractFramesFromVideo(videoUri: Uri): File {
+        Log.d("VideoProcessing", "extractFramesFromVideo")
         val framesDir = File(context.cacheDir, "chess_video_frames").apply { mkdirs() }
         val retriever = MediaMetadataRetriever().apply {
             setDataSource(context, videoUri)
@@ -52,15 +95,32 @@ class VideoToPGNProcessor(private val context: Context, private val tfLiteInterp
         val frameInterval = 1_000_000 // 1 frame per second
         var currentTimeUs = 0L
         var frameCount = 0
+        val totalFrames = (duration * 1000 / frameInterval).toInt()
 
-        while (currentTimeUs < duration * 1000) {
+        while (currentTimeUs < duration * 1000 && !isCancelled) {
             retriever.getFrameAtTime(currentTimeUs, MediaMetadataRetriever.OPTION_CLOSEST)?.let { bitmap ->
+                val croppedBitmap = cropRect?.let { rect ->
+                    val left = (rect.left * bitmap.width).toInt().coerceAtLeast(0)
+                    val top = (rect.top * bitmap.height).toInt().coerceAtLeast(0)
+                    val right = (rect.right * bitmap.width).toInt().coerceAtMost(bitmap.width)
+                    val bottom = (rect.bottom * bitmap.height).toInt().coerceAtMost(bitmap.height)
+
+                    if (right > left && bottom > top) {
+                        Bitmap.createBitmap(bitmap, left, top, right - left, bottom - top)
+                    } else {
+                        bitmap
+                    }
+                } ?: bitmap
+
                 File(framesDir, "frame_${frameCount.toString().padStart(4, '0')}.jpg").apply {
                     FileOutputStream(this).use { out ->
-                        bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
+                        croppedBitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
                     }
                 }
                 frameCount++
+
+                val progress = (currentTimeUs * 30 / (duration * 1000)).toInt()
+                onProgressUpdate(progress, "Извлечено $frameCount/$totalFrames кадров")
             }
             currentTimeUs += frameInterval
         }
@@ -70,6 +130,7 @@ class VideoToPGNProcessor(private val context: Context, private val tfLiteInterp
     }
 
     private fun recognizeFensFromFrames(framesDir: File): List<String> {
+        Log.d("VideoProcessing", "recognizeFensFromFrames")
         return framesDir.listFiles()
             ?.sortedBy { it.name }
             ?.filter { it.name.endsWith(".jpg") }
@@ -228,7 +289,7 @@ class VideoToPGNProcessor(private val context: Context, private val tfLiteInterp
 
 
     private fun correctFenSequence(fens: List<String>): List<String> {
-
+        Log.d("VideoProcessing", "correctFenSequence")
         if (fens.isEmpty()) return emptyList()
 
         val board = Board()
@@ -315,6 +376,7 @@ class VideoToPGNProcessor(private val context: Context, private val tfLiteInterp
     }
 
     private fun generatePGN(fens: List<String>): String {
+        Log.d("VideoProcessing", "generatePGN")
         if (fens.size < 2) return ""
 
         val pgn = StringBuilder()
