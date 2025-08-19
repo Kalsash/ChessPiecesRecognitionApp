@@ -1,4 +1,5 @@
 package com.example.chesspiecesrecognition
+
 import MainScreen
 import android.content.Intent
 import android.graphics.Bitmap
@@ -43,9 +44,24 @@ class MainActivity : ComponentActivity() {
             var showVideoCropper by remember { mutableStateOf(false) }
             var videoToProcess by remember { mutableStateOf<Uri?>(null) }
             var isLoading by remember { mutableStateOf(false) }
+            var isVideoProcessing by remember { mutableStateOf(false) }
+            var processingProgress by remember { mutableStateOf(0) }
+            var processingStatus by remember { mutableStateOf("") }
             val coroutineScope = rememberCoroutineScope()
 
-            if (showHistory) {
+            if (isVideoProcessing) {
+                // Новый экран обработки видео
+                VideoProcessingScreen(
+                    progress = processingProgress,
+                    status = processingStatus,
+                    onCancel = {
+                        isVideoProcessing = false
+                        // Здесь можно добавить отмену обработки, если поддерживается
+                        processingProgress = 0
+                        processingStatus = ""
+                    }
+                )
+            } else if (showHistory) {
                 HistoryScreen(
                     onBack = { showHistory = false },
                     onItemClick = { url ->
@@ -61,10 +77,21 @@ class MainActivity : ComponentActivity() {
                         onCropConfirmed = {
                             showVideoCropper = false
                             videoToProcess?.let { uri ->
-                                isLoading = true
-                                processVideoWithProgress(uri, coroutineScope) {
-                                    isLoading = false
-                                }
+                                isVideoProcessing = true
+                                processVideoWithProgress(
+                                    uri = uri,
+                                    coroutineScope = coroutineScope,
+                                    onProgressUpdate = { progress, status ->
+                                        processingProgress = progress
+                                        processingStatus = status
+                                    },
+                                    onComplete = {
+                                        isVideoProcessing = false
+                                        isLoading = false
+                                        processingProgress = 0
+                                        processingStatus = ""
+                                    }
+                                )
                             }
                         },
                         onCancel = {
@@ -137,6 +164,7 @@ class MainActivity : ComponentActivity() {
     private fun processVideoWithProgress(
         uri: Uri,
         coroutineScope: CoroutineScope,
+        onProgressUpdate: (Int, String) -> Unit,
         onComplete: () -> Unit
     ) {
         coroutineScope.launch {
@@ -147,7 +175,8 @@ class MainActivity : ComponentActivity() {
                 val processor = VideoToPGNProcessor(
                     this@MainActivity,
                     tfLiteInterpreter,
-                    imageCropper.cropRect
+                    imageCropper.cropRect,
+                    onProgressUpdate = onProgressUpdate
                 )
                 Log.d("VideoProcessing", "Entered Processor")
                 processor.processVideoToPGN(uri) { pgn ->
@@ -166,6 +195,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             } catch (e: Exception) {
+                Log.e("VideoProcessing", "Error processing video", e)
                 onComplete()
             }
         }
@@ -187,5 +217,3 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
-
-
