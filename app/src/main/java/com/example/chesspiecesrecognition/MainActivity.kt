@@ -15,6 +15,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.yalantis.ucrop.UCrop
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import org.tensorflow.lite.Interpreter
 import java.io.File
@@ -26,6 +27,8 @@ class MainActivity : ComponentActivity() {
     private var croppedImageUri by mutableStateOf<Uri?>(null)
     private lateinit var historyViewModel: HistoryViewModel
     private val imageCropper by lazy { ImageCropper(this) }
+    private var currentFrame by mutableStateOf<Bitmap?>(null)
+    private var videoProcessor: VideoToPGNProcessor? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -49,16 +52,27 @@ class MainActivity : ComponentActivity() {
             var processingStatus by remember { mutableStateOf("") }
             val coroutineScope = rememberCoroutineScope()
 
+            // Собираем поток текущих кадров
+            LaunchedEffect(isVideoProcessing) {
+                if (isVideoProcessing) {
+                    videoProcessor?.currentFrame?.collectLatest { frame ->
+                        currentFrame = frame
+                    }
+                }
+            }
+
             if (isVideoProcessing) {
-                // Новый экран обработки видео
+                // Новый экран обработки видео с передачей текущего кадра
                 VideoProcessingScreen(
                     progress = processingProgress,
                     status = processingStatus,
+                    currentFrame = currentFrame,
                     onCancel = {
                         isVideoProcessing = false
-                        // Здесь можно добавить отмену обработки, если поддерживается
+                        videoProcessor?.cancel()
                         processingProgress = 0
                         processingStatus = ""
+                        currentFrame = null
                     }
                 )
             } else if (showHistory) {
@@ -90,6 +104,7 @@ class MainActivity : ComponentActivity() {
                                         isLoading = false
                                         processingProgress = 0
                                         processingStatus = ""
+                                        currentFrame = null
                                     }
                                 )
                             }
@@ -116,6 +131,46 @@ class MainActivity : ComponentActivity() {
                     },
                     viewModel = historyViewModel
                 )
+            }
+        }
+    }
+
+    private fun processVideoWithProgress(
+        uri: Uri,
+        coroutineScope: CoroutineScope,
+        onProgressUpdate: (Int, String) -> Unit,
+        onComplete: () -> Unit
+    ) {
+        coroutineScope.launch {
+            Log.d("VideoProcessing", "Starting video processing coroutine")
+            try {
+                Log.d("VideoProcessing", "Entered try block")
+
+                videoProcessor = VideoToPGNProcessor(
+                    this@MainActivity,
+                    tfLiteInterpreter,
+                    imageCropper.cropRect,
+                    onProgressUpdate = onProgressUpdate
+                )
+                Log.d("VideoProcessing", "Entered Processor")
+                videoProcessor?.processVideoToPGN(uri) { pgn ->
+                    coroutineScope.launch {
+                        Log.d("VideoProcessing", "Video Ended")
+                        if (pgn.startsWith("Error:")) {
+                            Log.d("VideoProcessing", "Error with pgn")
+                        } else {
+                            val url = "https://lichess.org/paste?pgn=${Uri.encode(pgn)}"
+                            historyViewModel.addHistoryItem("video_processing", url)
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                            startActivity(intent)
+                            Log.d("VideoProcessing", "PGN Ready")
+                        }
+                        onComplete()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("VideoProcessing", "Error processing video", e)
+                onComplete()
             }
         }
     }
@@ -161,46 +216,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun processVideoWithProgress(
-        uri: Uri,
-        coroutineScope: CoroutineScope,
-        onProgressUpdate: (Int, String) -> Unit,
-        onComplete: () -> Unit
-    ) {
-        coroutineScope.launch {
-            Log.d("VideoProcessing", "Starting video processing coroutine")
-            try {
-                Log.d("VideoProcessing", "Entered try block")
-
-                val processor = VideoToPGNProcessor(
-                    this@MainActivity,
-                    tfLiteInterpreter,
-                    imageCropper.cropRect,
-                    onProgressUpdate = onProgressUpdate
-                )
-                Log.d("VideoProcessing", "Entered Processor")
-                processor.processVideoToPGN(uri) { pgn ->
-                    coroutineScope.launch {
-                        Log.d("VideoProcessing", "Video Ended")
-                        if (pgn.startsWith("Error:")) {
-                            Log.d("VideoProcessing", "Error with pgn")
-                        } else {
-                            val url = "https://lichess.org/paste?pgn=${Uri.encode(pgn)}"
-                            historyViewModel.addHistoryItem("video_processing", url)
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                            startActivity(intent)
-                            Log.d("VideoProcessing", "PGN Ready")
-                        }
-                        onComplete()
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e("VideoProcessing", "Error processing video", e)
-                onComplete()
-            }
-        }
-    }
-
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
 
@@ -209,7 +224,6 @@ class MainActivity : ComponentActivity() {
             if (resultUri != null) {
                 croppedImageUri = resultUri
             } else {
-                Log.e("UCrop", "Result Uri is null")
             }
         } else if (resultCode == UCrop.RESULT_ERROR) {
             val cropError = UCrop.getError(data!!)

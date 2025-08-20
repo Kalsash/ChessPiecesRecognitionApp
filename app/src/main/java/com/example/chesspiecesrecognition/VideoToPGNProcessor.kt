@@ -16,6 +16,8 @@ import com.github.bhlangonijr.chesslib.Square
 import com.github.bhlangonijr.chesslib.move.Move
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.tensorflow.lite.Interpreter
 import java.io.File
@@ -33,6 +35,8 @@ class VideoToPGNProcessor(
     private val onProgressUpdate: (Int, String) -> Unit = { _, _ -> }
 ) {
     private var isCancelled = false
+    private val _currentFrame = MutableStateFlow<Bitmap?>(null)
+    val currentFrame = _currentFrame.asStateFlow()
 
     fun cancel() {
         isCancelled = true
@@ -72,10 +76,12 @@ class VideoToPGNProcessor(
                 val pgn = generatePGN(correctedFens)
 
                 onProgressUpdate(100, "Завершено!")
+                _currentFrame.value = null // Очищаем последний кадр
                 callback(pgn)
                 framesDir.deleteRecursively()
             } catch (e: Exception) {
                 Log.d("VideoProcessing", "processVideoToPGN Error")
+                _currentFrame.value = null
                 callback("Error: ${e.message}")
             }
         }
@@ -112,6 +118,9 @@ class VideoToPGNProcessor(
                     }
                 } ?: bitmap
 
+                // Обновляем текущий кадр для отображения
+                _currentFrame.value = croppedBitmap
+
                 File(framesDir, "frame_${frameCount.toString().padStart(4, '0')}.jpg").apply {
                     FileOutputStream(this).use { out ->
                         croppedBitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
@@ -136,7 +145,10 @@ class VideoToPGNProcessor(
             ?.filter { it.name.endsWith(".jpg") }
             ?.mapNotNull { file ->
                 try {
-                    BitmapFactory.decodeFile(file.absolutePath)?.let { recognizeFromBitmap(it) }
+                    // Обновляем текущий кадр для отображения
+                    val bitmap = BitmapFactory.decodeFile(file.absolutePath)
+                    _currentFrame.value = bitmap
+                    bitmap?.let { recognizeFromBitmap(it) }
                 } catch (e: Exception) {
                     Log.e("VideoToPGN", "Error processing frame ${file.name}", e)
                     null
@@ -227,14 +239,12 @@ class VideoToPGNProcessor(
 
             fen = fenParts.joinToString("/") + " w - - 0 1"
 
-
         } catch (e: Exception) {
             e.printStackTrace()
             Toast.makeText(context, "Ошибка при распознавании изображения", Toast.LENGTH_SHORT).show()
         }
         return fen
     }
-
 
     fun getSquaresFromImage(image: Bitmap): List<Bitmap> {
         val squares = mutableListOf<Bitmap>()
@@ -285,8 +295,6 @@ class VideoToPGNProcessor(
             null
         }
     }
-
-
 
     private fun correctFenSequence(fens: List<String>): List<String> {
         Log.d("VideoProcessing", "correctFenSequence")
