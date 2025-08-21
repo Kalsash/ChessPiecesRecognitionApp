@@ -83,6 +83,10 @@ class ImageCropper(private val context: Context) {
         )
     }
 
+    fun updatePreview(bitmap: Bitmap) {
+        croppedBitmap = autoCrop(bitmap)
+    }
+
     fun getDrawCropRectLambda(
         imageSize: Size,
         cornerSizePx: Float,
@@ -200,6 +204,9 @@ class ImageCropper(private val context: Context) {
                 )
                 else -> cropRect
             }
+
+            // Автоматически обновляем предпросмотр при изменении области
+            currentBitmap?.let { updatePreview(it) }
         }
     }
 
@@ -217,6 +224,7 @@ fun ImageCropperScreen(
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
+    var showPreview by remember { mutableStateOf(false) }
 
     val cornerSizePx = with(density) { 20.dp.toPx() }
     val dragCornerSizePx = with(density) { 40.dp.toPx() }
@@ -230,7 +238,7 @@ fun ImageCropperScreen(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            text = "Настройте область обрезки для видео",
+            text = if (showPreview) "Предпросмотр обрезки" else "Настройте область обрезки для видео",
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.padding(bottom = 16.dp)
         )
@@ -239,8 +247,8 @@ fun ImageCropperScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f)
-                .pointerInput(Unit) {
-                    if (imageCropper.showCropRect) {
+                .pointerInput(showPreview) {
+                    if (imageCropper.showCropRect && !showPreview) {
                         detectDragGestures(
                             onDragStart = { start ->
                                 imageCropper.handleDragStart(
@@ -260,29 +268,41 @@ fun ImageCropperScreen(
                     }
                 }
         ) {
-            imageCropper.currentBitmap?.let { bitmap ->
-                Image(
-                    bitmap = bitmap.asImageBitmap(),
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize()
-                )
-
-                if (imageCropper.showCropRect) {
-                    Canvas(modifier = Modifier.fillMaxSize()) {
-                        imageCropper.getDrawCropRectLambda(
-                            Size(size.width.toFloat(), size.height.toFloat()),
-                            cornerSizePx,
-                            rectStrokeWidthPx,
-                            cornerStrokeWidthPx
-                        )()
-                    }
+            if (showPreview) {
+                // Показываем предпросмотр обрезанного изображения
+                imageCropper.croppedBitmap?.let { bitmap ->
+                    Image(
+                        bitmap = bitmap.asImageBitmap(),
+                        contentDescription = "Предпросмотр обрезки",
+                        modifier = Modifier.fillMaxSize()
+                    )
                 }
-            } ?: run {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("Изображение не загружено")
+            } else {
+                // Показываем оригинальное изображение с рамкой обрезки
+                imageCropper.currentBitmap?.let { bitmap ->
+                    Image(
+                        bitmap = bitmap.asImageBitmap(),
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize()
+                    )
+
+                    if (imageCropper.showCropRect) {
+                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            imageCropper.getDrawCropRectLambda(
+                                Size(size.width.toFloat(), size.height.toFloat()),
+                                cornerSizePx,
+                                rectStrokeWidthPx,
+                                cornerStrokeWidthPx
+                            )()
+                        }
+                    }
+                } ?: run {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("Изображение не загружено")
+                    }
                 }
             }
         }
@@ -293,27 +313,48 @@ fun ImageCropperScreen(
                 .padding(top = 16.dp),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Button(
-                onClick = onCancel,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.error
-                )
-            ) {
-                Text("Отмена")
+            if (showPreview) {
+                Button(
+                    onClick = { showPreview = false },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.secondary
+                    )
+                ) {
+                    Text("Назад к настройке")
+                }
+            } else {
+                Button(
+                    onClick = onCancel,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text("Отмена")
+                }
             }
 
             Spacer(modifier = Modifier.width(16.dp))
 
-            Button(
-                onClick = {
-                    imageCropper.currentBitmap?.let { bitmap ->
-                        imageCropper.croppedBitmap = imageCropper.autoCrop(bitmap)
+            if (showPreview) {
+                Button(
+                    onClick = {
                         imageCropper.saveCropParameters()
                         onCropConfirmed()
                     }
+                ) {
+                    Text("Подтвердить и обработать")
                 }
-            ) {
-                Text("Подтвердить и обработать")
+            } else {
+                Button(
+                    onClick = {
+                        imageCropper.currentBitmap?.let { bitmap ->
+                            imageCropper.croppedBitmap = imageCropper.autoCrop(bitmap)
+                            showPreview = true
+                        }
+                    }
+                ) {
+                    Text("Предпросмотр")
+                }
             }
         }
     }
