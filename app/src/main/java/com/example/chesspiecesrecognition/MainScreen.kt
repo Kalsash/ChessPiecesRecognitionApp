@@ -12,8 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
@@ -35,7 +34,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.rememberAsyncImagePainter
 import com.example.chesspiecesrecognition.HistoryViewModel
-import com.example.chesspiecesrecognition.recognizeFromImage
 import org.tensorflow.lite.Interpreter
 
 @Composable
@@ -43,22 +41,20 @@ fun MainScreen(
     tfLiteInterpreter: Interpreter,
     croppedImageUri: Uri?,
     isLoading: Boolean,
-    onCropImage: (Uri) -> Unit,
+    onRecognizeImage: (Uri) -> Unit,
     onShowHistory: () -> Unit,
     onProcessVideo: (Uri) -> Unit,
+    onShowAbout: () -> Unit,
     viewModel: HistoryViewModel
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
-    var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
-
     val imageLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         if (uri != null) {
-            selectedImageUri = uri
-            onCropImage(uri)
+            onRecognizeImage(uri)
         }
     }
 
@@ -122,28 +118,10 @@ fun MainScreen(
                 }
 
                 ActionButton(
-                    text = "Выбрать фото",
-                    icon = Icons.Default.Add
-                ) {
-                    imageLauncher.launch("image/*")
-                }
-
-                ActionButton(
-                    text = "Обрезать фото",
-                    icon = Icons.Default.Edit
-                ) {
-                    if (selectedImageUri != null) {
-                        onCropImage(selectedImageUri!!)
-                    }
-                }
-
-                ActionButton(
                     text = "Распознать фигуры",
                     icon = Icons.Default.Search
                 ) {
-                    if (croppedImageUri != null) {
-                        recognizeFromImage(context, tfLiteInterpreter, croppedImageUri!!, viewModel)
-                    }
+                    imageLauncher.launch("image/*")
                 }
 
                 ActionButton(
@@ -158,6 +136,13 @@ fun MainScreen(
                     icon = Icons.Default.List
                 ) {
                     onShowHistory()
+                }
+
+                ActionButton(
+                    text = "О приложении",
+                    icon = Icons.Default.Info
+                ) {
+                    onShowAbout()
                 }
             }
 

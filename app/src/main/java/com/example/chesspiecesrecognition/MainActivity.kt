@@ -44,6 +44,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             var showHistory by remember { mutableStateOf(false) }
+            var showAbout by remember { mutableStateOf(false) }
             var showVideoCropper by remember { mutableStateOf(false) }
             var videoToProcess by remember { mutableStateOf<Uri?>(null) }
             var isLoading by remember { mutableStateOf(false) }
@@ -84,6 +85,10 @@ class MainActivity : ComponentActivity() {
                     },
                     viewModel = historyViewModel
                 )
+            } else if (showAbout) {
+                AboutScreen(
+                    onBack = { showAbout = false }
+                )
             } else if (showVideoCropper) {
                 imageCropper.currentBitmap?.let {
                     ImageCropperScreen(
@@ -120,8 +125,12 @@ class MainActivity : ComponentActivity() {
                     tfLiteInterpreter = tfLiteInterpreter,
                     croppedImageUri = croppedImageUri,
                     isLoading = isLoading,
-                    onCropImage = { uri -> startCrop(uri) },
+                    onRecognizeImage = { uri ->
+                        // Автоматически запускаем обрезку при выборе изображения
+                        startCrop(uri)
+                    },
                     onShowHistory = { showHistory = true },
+                    onShowAbout = { showAbout = true },
                     onProcessVideo = { uri ->
                         extractFirstFrame(uri)?.let { frame ->
                             imageCropper.currentBitmap = frame
@@ -223,7 +232,10 @@ class MainActivity : ComponentActivity() {
             val resultUri = UCrop.getOutput(data!!)
             if (resultUri != null) {
                 croppedImageUri = resultUri
-            } else {
+                // Автоматически запускаем распознавание после обрезки
+                croppedImageUri?.let {
+                    recognizeFromImage(this, tfLiteInterpreter, it, historyViewModel)
+                }
             }
         } else if (resultCode == UCrop.RESULT_ERROR) {
             val cropError = UCrop.getError(data!!)
