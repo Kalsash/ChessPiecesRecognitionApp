@@ -106,6 +106,7 @@ class VideoToPGNProcessor(
         while (currentTimeUs < duration * 1000 && !isCancelled) {
             retriever.getFrameAtTime(currentTimeUs, MediaMetadataRetriever.OPTION_CLOSEST)?.let { bitmap ->
                 val croppedBitmap = cropRect?.let { rect ->
+                    // Используем относительные координаты для обрезки
                     val left = (rect.left * bitmap.width).toInt().coerceAtLeast(0)
                     val top = (rect.top * bitmap.height).toInt().coerceAtLeast(0)
                     val right = (rect.right * bitmap.width).toInt().coerceAtMost(bitmap.width)

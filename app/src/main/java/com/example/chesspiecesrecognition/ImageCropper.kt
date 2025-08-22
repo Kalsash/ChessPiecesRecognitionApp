@@ -4,8 +4,6 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.RectF
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -20,10 +18,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
-import java.io.InputStream
 import kotlin.math.abs
 
 sealed class DragMode {
@@ -43,6 +42,9 @@ class ImageCropper(private val context: Context) {
     var showCropRect by mutableStateOf(true)
     var currentBitmap by mutableStateOf<Bitmap?>(null)
     var croppedBitmap by mutableStateOf<Bitmap?>(null)
+    var containerSize by mutableStateOf(Size.Zero)
+    var imageDisplaySize by mutableStateOf(Size.Zero) // Фактический размер изображения на экране
+    var imageOffset by mutableStateOf(Offset.Zero) // Смещение изображения относительно контейнера
 
     private val prefs = context.getSharedPreferences("CropPrefs", Context.MODE_PRIVATE)
 
@@ -69,6 +71,7 @@ class ImageCropper(private val context: Context) {
         val width = bitmap.width
         val height = bitmap.height
 
+        // Преобразуем относительные координаты в пиксельные координаты изображения
         val left = (cropRect.left * width).toInt()
         val top = (cropRect.top * height).toInt()
         val right = (cropRect.right * width).toInt()
@@ -87,8 +90,28 @@ class ImageCropper(private val context: Context) {
         croppedBitmap = autoCrop(bitmap)
     }
 
+    // Преобразование координат экрана в координаты изображения (0-1)
+    fun screenToImageCoordinates(screenPoint: Offset): Offset {
+        if (imageDisplaySize.width <= 0 || imageDisplaySize.height <= 0) return Offset.Zero
+
+        val xInImage = (screenPoint.x - imageOffset.x) / imageDisplaySize.width
+        val yInImage = (screenPoint.y - imageOffset.y) / imageDisplaySize.height
+
+        return Offset(
+            xInImage.coerceIn(0f, 1f),
+            yInImage.coerceIn(0f, 1f)
+        )
+    }
+
+    // Преобразование координат изображения (0-1) в координаты экрана
+    fun imageToScreenCoordinates(imagePoint: Offset): Offset {
+        return Offset(
+            imagePoint.x * imageDisplaySize.width + imageOffset.x,
+            imagePoint.y * imageDisplaySize.height + imageOffset.y
+        )
+    }
+
     fun getDrawCropRectLambda(
-        imageSize: Size,
         cornerSizePx: Float,
         rectStrokeWidthPx: Float,
         cornerStrokeWidthPx: Float,
@@ -96,80 +119,92 @@ class ImageCropper(private val context: Context) {
         cornerColor: Color = Color.Blue
     ): androidx.compose.ui.graphics.drawscope.DrawScope.() -> Unit {
         return {
-            val rectLeft = cropRect.left * imageSize.width
-            val rectTop = cropRect.top * imageSize.height
-            val rectRight = cropRect.right * imageSize.width
-            val rectBottom = cropRect.bottom * imageSize.height
-            val rectWidth = rectRight - rectLeft
-            val rectHeight = rectBottom - rectTop
+            if (imageDisplaySize.width > 0 && imageDisplaySize.height > 0) {
+                // Преобразуем относительные координаты в экранные
+                val rectLeft = cropRect.left * imageDisplaySize.width + imageOffset.x
+                val rectTop = cropRect.top * imageDisplaySize.height + imageOffset.y
+                val rectRight = cropRect.right * imageDisplaySize.width + imageOffset.x
+                val rectBottom = cropRect.bottom * imageDisplaySize.height + imageOffset.y
+                val rectWidth = rectRight - rectLeft
+                val rectHeight = rectBottom - rectTop
 
-            drawRect(
-                color = rectColor,
-                topLeft = Offset(rectLeft, rectTop),
-                size = Size(rectWidth, rectHeight),
-                style = Stroke(width = rectStrokeWidthPx)
-            )
+                // Рисуем прямоугольник обрезки
+                drawRect(
+                    color = rectColor,
+                    topLeft = Offset(rectLeft, rectTop),
+                    size = Size(rectWidth, rectHeight),
+                    style = Stroke(width = rectStrokeWidthPx)
+                )
 
-            drawRect(
-                color = cornerColor,
-                topLeft = Offset(rectLeft, rectTop),
-                size = Size(cornerSizePx, cornerSizePx),
-                style = Stroke(width = cornerStrokeWidthPx)
-            )
+                // Рисуем углы
+                drawRect(
+                    color = cornerColor,
+                    topLeft = Offset(rectLeft, rectTop),
+                    size = Size(cornerSizePx, cornerSizePx),
+                    style = Stroke(width = cornerStrokeWidthPx)
+                )
 
-            drawRect(
-                color = cornerColor,
-                topLeft = Offset(rectRight - cornerSizePx, rectTop),
-                size = Size(cornerSizePx, cornerSizePx),
-                style = Stroke(width = cornerStrokeWidthPx)
-            )
+                drawRect(
+                    color = cornerColor,
+                    topLeft = Offset(rectRight - cornerSizePx, rectTop),
+                    size = Size(cornerSizePx, cornerSizePx),
+                    style = Stroke(width = cornerStrokeWidthPx)
+                )
 
-            drawRect(
-                color = cornerColor,
-                topLeft = Offset(rectLeft, rectBottom - cornerSizePx),
-                size = Size(cornerSizePx, cornerSizePx),
-                style = Stroke(width = cornerStrokeWidthPx)
-            )
+                drawRect(
+                    color = cornerColor,
+                    topLeft = Offset(rectLeft, rectBottom - cornerSizePx),
+                    size = Size(cornerSizePx, cornerSizePx),
+                    style = Stroke(width = cornerStrokeWidthPx)
+                )
 
-            drawRect(
-                color = cornerColor,
-                topLeft = Offset(rectRight - cornerSizePx, rectBottom - cornerSizePx),
-                size = Size(cornerSizePx, cornerSizePx),
-                style = Stroke(width = cornerStrokeWidthPx)
-            )
+                drawRect(
+                    color = cornerColor,
+                    topLeft = Offset(rectRight - cornerSizePx, rectBottom - cornerSizePx),
+                    size = Size(cornerSizePx, cornerSizePx),
+                    style = Stroke(width = cornerStrokeWidthPx)
+                )
+            }
         }
     }
 
-    fun handleDragStart(start: Offset, imageSize: Size, cornerSizePx: Float) {
-        val rectLeft = cropRect.left * imageSize.width
-        val rectTop = cropRect.top * imageSize.height
-        val rectRight = cropRect.right * imageSize.width
-        val rectBottom = cropRect.bottom * imageSize.height
+    fun handleDragStart(screenStart: Offset, cornerSizePx: Float) {
+        // Преобразуем экранные координаты в координаты изображения
+        val imageStart = screenToImageCoordinates(screenStart)
+
+        val rectLeft = cropRect.left
+        val rectTop = cropRect.top
+        val rectRight = cropRect.right
+        val rectBottom = cropRect.bottom
+
+        // Преобразуем размер угла в относительные единицы
+        val relativeCornerSize = cornerSizePx / imageDisplaySize.width
 
         dragMode = when {
-            abs(start.x - rectLeft) < cornerSizePx &&
-                    abs(start.y - rectTop) < cornerSizePx -> DragMode.RESIZE_TOP_LEFT
-            abs(start.x - rectRight) < cornerSizePx &&
-                    abs(start.y - rectTop) < cornerSizePx -> DragMode.RESIZE_TOP_RIGHT
-            abs(start.x - rectLeft) < cornerSizePx &&
-                    abs(start.y - rectBottom) < cornerSizePx -> DragMode.RESIZE_BOTTOM_LEFT
-            abs(start.x - rectRight) < cornerSizePx &&
-                    abs(start.y - rectBottom) < cornerSizePx -> DragMode.RESIZE_BOTTOM_RIGHT
-            start.x in rectLeft..rectRight &&
-                    start.y in rectTop..rectBottom -> DragMode.MOVE
+            abs(imageStart.x - rectLeft) < relativeCornerSize &&
+                    abs(imageStart.y - rectTop) < relativeCornerSize -> DragMode.RESIZE_TOP_LEFT
+            abs(imageStart.x - rectRight) < relativeCornerSize &&
+                    abs(imageStart.y - rectTop) < relativeCornerSize -> DragMode.RESIZE_TOP_RIGHT
+            abs(imageStart.x - rectLeft) < relativeCornerSize &&
+                    abs(imageStart.y - rectBottom) < relativeCornerSize -> DragMode.RESIZE_BOTTOM_LEFT
+            abs(imageStart.x - rectRight) < relativeCornerSize &&
+                    abs(imageStart.y - rectBottom) < relativeCornerSize -> DragMode.RESIZE_BOTTOM_RIGHT
+            imageStart.x in rectLeft..rectRight &&
+                    imageStart.y in rectTop..rectBottom -> DragMode.MOVE
             else -> DragMode.NONE
         }
 
         if (dragMode != DragMode.NONE) {
             isDragging = true
-            dragStart = start
+            dragStart = screenStart
         }
     }
 
-    fun handleDrag(change: Offset, imageSize: Size) {
-        if (isDragging) {
-            val dx = change.x / imageSize.width
-            val dy = change.y / imageSize.height
+    fun handleDrag(screenChange: Offset) {
+        if (isDragging && imageDisplaySize.width > 0 && imageDisplaySize.height > 0) {
+            // Преобразуем экранное смещение в относительное смещение изображения
+            val dx = screenChange.x / imageDisplaySize.width
+            val dy = screenChange.y / imageDisplaySize.height
 
             cropRect = when (dragMode) {
                 DragMode.MOVE -> RectF(
@@ -179,28 +214,28 @@ class ImageCropper(private val context: Context) {
                     (cropRect.bottom + dy).coerceIn(0f, 1f)
                 )
                 DragMode.RESIZE_TOP_LEFT -> RectF(
-                    (cropRect.left + dx).coerceIn(0f, cropRect.right - 0.1f),
-                    (cropRect.top + dy).coerceIn(0f, cropRect.bottom - 0.1f),
+                    (cropRect.left + dx).coerceIn(0f, cropRect.right - 0.05f),
+                    (cropRect.top + dy).coerceIn(0f, cropRect.bottom - 0.05f),
                     cropRect.right,
                     cropRect.bottom
                 )
                 DragMode.RESIZE_TOP_RIGHT -> RectF(
                     cropRect.left,
-                    (cropRect.top + dy).coerceIn(0f, cropRect.bottom - 0.1f),
-                    (cropRect.right + dx).coerceIn(cropRect.left + 0.1f, 1f),
+                    (cropRect.top + dy).coerceIn(0f, cropRect.bottom - 0.05f),
+                    (cropRect.right + dx).coerceIn(cropRect.left + 0.05f, 1f),
                     cropRect.bottom
                 )
                 DragMode.RESIZE_BOTTOM_LEFT -> RectF(
-                    (cropRect.left + dx).coerceIn(0f, cropRect.right - 0.1f),
+                    (cropRect.left + dx).coerceIn(0f, cropRect.right - 0.05f),
                     cropRect.top,
                     cropRect.right,
-                    (cropRect.bottom + dy).coerceIn(cropRect.top + 0.1f, 1f)
+                    (cropRect.bottom + dy).coerceIn(cropRect.top + 0.05f, 1f)
                 )
                 DragMode.RESIZE_BOTTOM_RIGHT -> RectF(
                     cropRect.left,
                     cropRect.top,
-                    (cropRect.right + dx).coerceIn(cropRect.left + 0.1f, 1f),
-                    (cropRect.bottom + dy).coerceIn(cropRect.top + 0.1f, 1f)
+                    (cropRect.right + dx).coerceIn(cropRect.left + 0.05f, 1f),
+                    (cropRect.bottom + dy).coerceIn(cropRect.top + 0.05f, 1f)
                 )
                 else -> cropRect
             }
@@ -213,6 +248,36 @@ class ImageCropper(private val context: Context) {
     fun handleDragEnd() {
         isDragging = false
         dragMode = DragMode.NONE
+    }
+
+    // Вычисление размера и позиции изображения на экране
+    fun calculateImageDisplaySize(containerSize: Size, bitmap: Bitmap?) {
+        if (bitmap == null) return
+
+        val containerAspect = containerSize.width / containerSize.height
+        val imageAspect = bitmap.width.toFloat() / bitmap.height.toFloat()
+
+        if (containerAspect > imageAspect) {
+            // Контейнер шире изображения - изображение занимает всю высоту
+            imageDisplaySize = Size(
+                containerSize.height * imageAspect,
+                containerSize.height
+            )
+            imageOffset = Offset(
+                (containerSize.width - imageDisplaySize.width) / 2,
+                0f
+            )
+        } else {
+            // Контейнер уже изображения - изображение занимает всю ширину
+            imageDisplaySize = Size(
+                containerSize.width,
+                containerSize.width / imageAspect
+            )
+            imageOffset = Offset(
+                0f,
+                (containerSize.height - imageDisplaySize.height) / 2
+            )
+        }
     }
 }
 
@@ -247,21 +312,24 @@ fun ImageCropperScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f)
+                .onSizeChanged { size ->
+                    imageCropper.containerSize = Size(size.width.toFloat(), size.height.toFloat())
+                    imageCropper.calculateImageDisplaySize(
+                        Size(size.width.toFloat(), size.height.toFloat()),
+                        imageCropper.currentBitmap
+                    )
+                }
                 .pointerInput(showPreview) {
                     if (imageCropper.showCropRect && !showPreview) {
                         detectDragGestures(
                             onDragStart = { start ->
                                 imageCropper.handleDragStart(
                                     start,
-                                    Size(size.width.toFloat(), size.height.toFloat()),
                                     dragCornerSizePx
                                 )
                             },
                             onDrag = { change, dragAmount ->
-                                imageCropper.handleDrag(
-                                    dragAmount,
-                                    Size(size.width.toFloat(), size.height.toFloat())
-                                )
+                                imageCropper.handleDrag(dragAmount)
                             },
                             onDragEnd = { imageCropper.handleDragEnd() }
                         )
@@ -269,27 +337,26 @@ fun ImageCropperScreen(
                 }
         ) {
             if (showPreview) {
-                // Показываем предпросмотр обрезанного изображения
                 imageCropper.croppedBitmap?.let { bitmap ->
                     Image(
                         bitmap = bitmap.asImageBitmap(),
                         contentDescription = "Предпросмотр обрезки",
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit
                     )
                 }
             } else {
-                // Показываем оригинальное изображение с рамкой обрезки
                 imageCropper.currentBitmap?.let { bitmap ->
                     Image(
                         bitmap = bitmap.asImageBitmap(),
                         contentDescription = null,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit
                     )
 
                     if (imageCropper.showCropRect) {
                         Canvas(modifier = Modifier.fillMaxSize()) {
                             imageCropper.getDrawCropRectLambda(
-                                Size(size.width.toFloat(), size.height.toFloat()),
                                 cornerSizePx,
                                 rectStrokeWidthPx,
                                 cornerStrokeWidthPx
