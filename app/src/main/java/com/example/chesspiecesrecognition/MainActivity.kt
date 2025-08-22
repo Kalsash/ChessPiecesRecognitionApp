@@ -45,6 +45,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             var showHistory by remember { mutableStateOf(false) }
             var showAbout by remember { mutableStateOf(false) }
+            var showFenEditor by remember { mutableStateOf(false) } // Добавляем состояние для FEN редактора
             var showVideoCropper by remember { mutableStateOf(false) }
             var videoToProcess by remember { mutableStateOf<Uri?>(null) }
             var isLoading by remember { mutableStateOf(false) }
@@ -62,84 +63,94 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            if (isVideoProcessing) {
-                // Новый экран обработки видео с передачей текущего кадра
-                VideoProcessingScreen(
-                    progress = processingProgress,
-                    status = processingStatus,
-                    currentFrame = currentFrame,
-                    onCancel = {
-                        isVideoProcessing = false
-                        videoProcessor?.cancel()
-                        processingProgress = 0
-                        processingStatus = ""
-                        currentFrame = null
-                    }
-                )
-            } else if (showHistory) {
-                HistoryScreen(
-                    onBack = { showHistory = false },
-                    onItemClick = { url ->
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                        startActivity(intent)
-                    },
-                    viewModel = historyViewModel
-                )
-            } else if (showAbout) {
-                AboutScreen(
-                    onBack = { showAbout = false }
-                )
-            } else if (showVideoCropper) {
-                imageCropper.currentBitmap?.let {
-                    ImageCropperScreen(
-                        imageCropper = imageCropper,
-                        onCropConfirmed = {
-                            showVideoCropper = false
-                            videoToProcess?.let { uri ->
-                                isVideoProcessing = true
-                                processVideoWithProgress(
-                                    uri = uri,
-                                    coroutineScope = coroutineScope,
-                                    onProgressUpdate = { progress, status ->
-                                        processingProgress = progress
-                                        processingStatus = status
-                                    },
-                                    onComplete = {
-                                        isVideoProcessing = false
-                                        isLoading = false
-                                        processingProgress = 0
-                                        processingStatus = ""
-                                        currentFrame = null
-                                    }
-                                )
-                            }
-                        },
+            when {
+                isVideoProcessing -> {
+                    VideoProcessingScreen(
+                        progress = processingProgress,
+                        status = processingStatus,
+                        currentFrame = currentFrame,
                         onCancel = {
-                            showVideoCropper = false
-                            videoToProcess = null
+                            isVideoProcessing = false
+                            videoProcessor?.cancel()
+                            processingProgress = 0
+                            processingStatus = ""
+                            currentFrame = null
                         }
                     )
                 }
-            } else {
-                MainScreen(
-                    tfLiteInterpreter = tfLiteInterpreter,
-                    croppedImageUri = croppedImageUri,
-                    isLoading = isLoading,
-                    onRecognizeImage = { uri ->
-                        // Автоматически запускаем обрезку при выборе изображения
-                        startCrop(uri)
-                    },
-                    onShowHistory = { showHistory = true },
-                    onShowAbout = { showAbout = true },
-                    onProcessVideo = { uri ->
-                        extractFirstFrame(uri)?.let { frame ->
-                            imageCropper.currentBitmap = frame
-                            showVideoCropper = true
-                            videoToProcess = uri
-                        }
-                    },
-                    viewModel = historyViewModel
-                )
+                showHistory -> {
+                    HistoryScreen(
+                        onBack = { showHistory = false },
+                        onItemClick = { url ->
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                            startActivity(intent)
+                        },
+                        viewModel = historyViewModel
+                    )
+                }
+                showAbout -> {
+                    AboutScreen(
+                        onBack = { showAbout = false }
+                    )
+                }
+                showFenEditor -> { // Добавляем экран FEN редактора
+                    FenEditorScreen(
+                        onBack = { showFenEditor = false }
+                    )
+                }
+                showVideoCropper -> {
+                    imageCropper.currentBitmap?.let {
+                        ImageCropperScreen(
+                            imageCropper = imageCropper,
+                            onCropConfirmed = {
+                                showVideoCropper = false
+                                videoToProcess?.let { uri ->
+                                    isVideoProcessing = true
+                                    processVideoWithProgress(
+                                        uri = uri,
+                                        coroutineScope = coroutineScope,
+                                        onProgressUpdate = { progress, status ->
+                                            processingProgress = progress
+                                            processingStatus = status
+                                        },
+                                        onComplete = {
+                                            isVideoProcessing = false
+                                            isLoading = false
+                                            processingProgress = 0
+                                            processingStatus = ""
+                                            currentFrame = null
+                                        }
+                                    )
+                                }
+                            },
+                            onCancel = {
+                                showVideoCropper = false
+                                videoToProcess = null
+                            }
+                        )
+                    }
+                }
+                else -> {
+                    MainScreen(
+                        tfLiteInterpreter = tfLiteInterpreter,
+                        croppedImageUri = croppedImageUri,
+                        isLoading = isLoading,
+                        onRecognizeImage = { uri ->
+                            startCrop(uri)
+                        },
+                        onShowHistory = { showHistory = true },
+                        onShowAbout = { showAbout = true },
+                        onProcessVideo = { uri ->
+                            extractFirstFrame(uri)?.let { frame ->
+                                imageCropper.currentBitmap = frame
+                                showVideoCropper = true
+                                videoToProcess = uri
+                            }
+                        },
+                        onFenEditor = { showFenEditor = true }, // Добавляем обработчик для FEN редактора
+                        viewModel = historyViewModel
+                    )
+                }
             }
         }
     }
@@ -232,7 +243,6 @@ class MainActivity : ComponentActivity() {
             val resultUri = UCrop.getOutput(data!!)
             if (resultUri != null) {
                 croppedImageUri = resultUri
-                // Автоматически запускаем распознавание после обрезки
                 croppedImageUri?.let {
                     recognizeFromImage(this, tfLiteInterpreter, it, historyViewModel)
                 }

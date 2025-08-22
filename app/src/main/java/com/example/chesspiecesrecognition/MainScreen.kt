@@ -45,6 +45,7 @@ fun MainScreen(
     onShowHistory: () -> Unit,
     onProcessVideo: (Uri) -> Unit,
     onShowAbout: () -> Unit,
+    onFenEditor: () -> Unit, // Добавляем новый параметр
     viewModel: HistoryViewModel
 ) {
     val context = LocalContext.current
@@ -129,6 +130,13 @@ fun MainScreen(
                     icon = Icons.Default.Search
                 ) {
                     videoLauncher.launch("video/*")
+                }
+
+                ActionButton(
+                    text = "FEN редактор",
+                    icon = Icons.Default.Search
+                ) {
+                    onFenEditor()
                 }
 
                 ActionButton(
