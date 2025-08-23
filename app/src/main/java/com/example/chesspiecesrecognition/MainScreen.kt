@@ -12,8 +12,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddCircle
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
@@ -30,6 +34,7 @@ import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.rememberAsyncImagePainter
@@ -92,14 +97,17 @@ fun MainScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(Color.Black.copy(alpha = 0.5f), shape = RoundedCornerShape(8.dp))
-                    .padding(8.dp)
+                    .padding(8.dp),
+                contentAlignment = Alignment.Center // Добавлено центрирование содержимого Box
             ) {
                 Text(
                     text = "♔ Chess Pieces Recognition ♔",
                     color = Color.White,
                     fontSize = 28.sp,
                     fontWeight = FontWeight.Bold,
-                    style = TextStyle(shadow = Shadow(color = Color.Black, blurRadius = 4f))
+                    style = TextStyle(shadow = Shadow(color = Color.Black, blurRadius = 4f)),
+                    textAlign = TextAlign.Center, // Добавлено центрирование текста
+                    modifier = Modifier.fillMaxWidth() // Чтобы текст занимал всю ширину для центрирования
                 )
             }
 
@@ -119,22 +127,22 @@ fun MainScreen(
                 }
 
                 ActionButton(
-                    text = "Распознать фигуры",
+                    text = "Распознать фигуры по фото",
                     icon = Icons.Default.Search
                 ) {
                     imageLauncher.launch("image/*")
                 }
 
                 ActionButton(
-                    text = "Обработать видео",
-                    icon = Icons.Default.Search
+                    text = "Извлечь шахматную партию из видео",
+                    icon = Icons.Default.PlayArrow
                 ) {
                     videoLauncher.launch("video/*")
                 }
 
                 ActionButton(
-                    text = "FEN редактор",
-                    icon = Icons.Default.Search
+                    text = "FEN-редактор",
+                    icon = Icons.Default.Edit
                 ) {
                     onFenEditor()
                 }

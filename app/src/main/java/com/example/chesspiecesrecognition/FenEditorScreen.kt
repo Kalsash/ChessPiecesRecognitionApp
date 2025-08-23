@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -14,13 +15,16 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -34,11 +38,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.times
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.material.icons.filled.Search
 
 // Модель для представления шахматной фигуры
 data class ChessPiece(
@@ -109,6 +116,7 @@ fun FenEditorScreen(onBack: () -> Unit) {
     var fenInput by remember { mutableStateOf("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR") }
     var pieces by remember { mutableStateOf(parseFen(fenInput)) }
     var selectedPiece by remember { mutableStateOf<Char?>(null) }
+    val context = LocalContext.current
 
     // Получаем размеры экрана для адаптивного дизайна
     val configuration = LocalConfiguration.current
@@ -120,6 +128,14 @@ fun FenEditorScreen(onBack: () -> Unit) {
     val boardSize = squareSize * 8
     val pieceIconSize = (squareSize * 0.6f).coerceAtMost(30.dp)
     val controlPieceSize = (screenWidth * 0.1f).coerceAtMost(40.dp)
+
+    // Функция для открытия позиции в Lichess
+    fun openLichess() {
+        val fullFen = "${fenInput}_w_KQkq_-_0_1"
+        val lichessUrl = "https://lichess.org/editor/$fullFen?color=white"
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(lichessUrl))
+        context.startActivity(intent)
+    }
 
     Scaffold(
         topBar = {
@@ -137,245 +153,274 @@ fun FenEditorScreen(onBack: () -> Unit) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Поле ввода FEN
-            OutlinedTextField(
-                value = fenInput,
-                onValueChange = { fenInput = it },
-                label = { Text("FEN строка") },
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Button(
-                    onClick = {
-                        pieces = parseFen(fenInput)
-                    },
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text("Загрузить FEN")
-                }
-
-                Button(
-                    onClick = {
-                        fenInput = generateFen(pieces)
-                    },
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text("Сгенерировать FEN")
-                }
-            }
-
-            // Панель выбора фигур
-            Text("Выберите фигуру:", fontWeight = FontWeight.Bold)
             Column(
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxSize()
+                    .padding(16.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // Белые фигуры
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                // Панель выбора фигур
+                Text("Выберите фигуру:", fontWeight = FontWeight.Bold)
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text("Белые:", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                    listOf('K', 'Q', 'R', 'B', 'N', 'P').forEach { pieceType ->
-                        val pieceSymbol = when (pieceType) {
-                            'K' -> "♔"; 'Q' -> "♕"; 'R' -> "♖"; 'B' -> "♗"; 'N' -> "♘"; 'P' -> "♙"
-                            else -> ""
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .size(controlPieceSize)
-                                .background(
-                                    if (selectedPiece == pieceType) Color.LightGray else Color.White,
-                                    RoundedCornerShape(8.dp)
-                                )
-                                .border(1.dp, Color.Gray, RoundedCornerShape(8.dp))
-                                .clickable {
-                                    selectedPiece = pieceType
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = pieceSymbol,
-                                fontSize = (controlPieceSize * 0.5f).value.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.Black
-                            )
-                        }
-                    }
-                }
-
-                // Черные фигуры
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Черные:", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                    listOf('k', 'q', 'r', 'b', 'n', 'p').forEach { pieceType ->
-                        val pieceSymbol = when (pieceType) {
-                            'k' -> "♚"; 'q' -> "♛"; 'r' -> "♜"; 'b' -> "♝"; 'n' -> "♞"; 'p' -> "♟"
-                            else -> ""
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .size(controlPieceSize)
-                                .background(
-                                    if (selectedPiece == pieceType) Color.LightGray else Color.White,
-                                    RoundedCornerShape(8.dp)
-                                )
-                                .border(1.dp, Color.Gray, RoundedCornerShape(8.dp))
-                                .clickable {
-                                    selectedPiece = pieceType
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = pieceSymbol,
-                                fontSize = (controlPieceSize * 0.5f).value.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.Black
-                            )
-                        }
-                    }
-                }
-
-                // Кнопка удаления
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(controlPieceSize)
-                            .background(
-                                if (selectedPiece == ' ') Color.LightGray else Color.White,
-                                RoundedCornerShape(8.dp)
-                            )
-                            .border(1.dp, Color.Gray, RoundedCornerShape(8.dp))
-                            .clickable {
-                                selectedPiece = ' '
-                            },
-                        contentAlignment = Alignment.Center
+                    // Белые фигуры
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "X",
-                            fontSize = (controlPieceSize * 0.5f).value.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.Red
-                        )
-                    }
-                    Text(
-                        text = "Выбрано: ${selectedPiece?.let {
-                            when(it) {
-                                'K' -> "Белый король ♔"
-                                'Q' -> "Белая ферзь ♕"
-                                'R' -> "Белая ладья ♖"
-                                'B' -> "Белый слон ♗"
-                                'N' -> "Белый конь ♘"
-                                'P' -> "Белая пешка ♙"
-                                'k' -> "Черный король ♚"
-                                'q' -> "Черная ферзь ♛"
-                                'r' -> "Черная ладья ♜"
-                                'b' -> "Черный слон ♝"
-                                'n' -> "Черный конь ♞"
-                                'p' -> "Черная пешка ♟"
-                                ' ' -> "Удалить фигуру"
+                        Text("Белые:", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        listOf('K', 'Q', 'R', 'B', 'N', 'P').forEach { pieceType ->
+                            val pieceSymbol = when (pieceType) {
+                                'K' -> "♔"; 'Q' -> "♕"; 'R' -> "♖"; 'B' -> "♗"; 'N' -> "♘"; 'P' -> "♙"
                                 else -> ""
                             }
-                        } ?: "Ничего не выбрано"}",
-                        fontSize = 12.sp
-                    )
-                }
-            }
 
-            // Шахматная доска
-            Box(
-                modifier = Modifier
-                    .width(boardSize)
-                    .height(boardSize)
-                    .background(Color.LightGray)
-                    .align(Alignment.CenterHorizontally)
-            ) {
-                // Рисуем доску и фигуры
-                for (row in 0 until 8) {
-                    for (col in 0 until 8) {
-                        val color = if ((row + col) % 2 == 0) Color(0xFFF0D9B5) else Color(0xFFB58863)
+                            Box(
+                                modifier = Modifier
+                                    .size(controlPieceSize)
+                                    .background(
+                                        if (selectedPiece == pieceType) Color.LightGray else Color.White,
+                                        RoundedCornerShape(8.dp)
+                                    )
+                                    .border(1.dp, Color.Gray, RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        selectedPiece = pieceType
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = pieceSymbol,
+                                    fontSize = (controlPieceSize * 0.5f).value.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.Black
+                                )
+                            }
+                        }
+                    }
 
-                        // Находим фигуру на этой клетке
-                        val pieceOnSquare = pieces.find { it.position == Pair(row, col) }
-                        val pieceSymbol = pieceOnSquare?.let { piece ->
-                            when (piece.type) {
-                                'K' -> "♔"; 'Q' -> "♕"; 'R' -> "♖"; 'B' -> "♗"; 'N' -> "♘"; 'P' -> "♙"
+                    // Черные фигуры
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Черные:", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        listOf('k', 'q', 'r', 'b', 'n', 'p').forEach { pieceType ->
+                            val pieceSymbol = when (pieceType) {
                                 'k' -> "♚"; 'q' -> "♛"; 'r' -> "♜"; 'b' -> "♝"; 'n' -> "♞"; 'p' -> "♟"
                                 else -> ""
                             }
-                        }
 
-                        Box(
-                            modifier = Modifier
-                                .size(squareSize)
-                                .offset(x = col * squareSize, y = row * squareSize)
-                                .background(color)
-                                .border(1.dp, Color.Black)
-                                .clickable {
-                                    if (selectedPiece != null) {
-                                        // Удаляем существующую фигуру на этой клетке
-                                        val newPieces = pieces.filterNot { it.position == Pair(row, col) }.toMutableList()
-
-                                        // Если выбран не пробел (не удаление), добавляем новую фигуру
-                                        if (selectedPiece != ' ') {
-                                            newPieces.add(ChessPiece(selectedPiece!!, Pair(row, col)))
-                                        }
-
-                                        pieces = newPieces
-                                        fenInput = generateFen(pieces)
-                                    }
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (pieceOnSquare != null) {
+                            Box(
+                                modifier = Modifier
+                                    .size(controlPieceSize)
+                                    .background(
+                                        if (selectedPiece == pieceType) Color.LightGray else Color.White,
+                                        RoundedCornerShape(8.dp)
+                                    )
+                                    .border(1.dp, Color.Gray, RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        selectedPiece = pieceType
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
                                 Text(
-                                    text = pieceSymbol ?: "",
-                                    fontSize = pieceIconSize.value.sp,
+                                    text = pieceSymbol,
+                                    fontSize = (controlPieceSize * 0.5f).value.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (pieceOnSquare.type.isUpperCase()) Color.Black else Color.Black
+                                    color = Color.Black
                                 )
                             }
                         }
                     }
+
+                    // Кнопка удаления
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(controlPieceSize)
+                                .background(
+                                    if (selectedPiece == ' ') Color.LightGray else Color.White,
+                                    RoundedCornerShape(8.dp)
+                                )
+                                .border(1.dp, Color.Gray, RoundedCornerShape(8.dp))
+                                .clickable {
+                                    selectedPiece = ' '
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "X",
+                                fontSize = (controlPieceSize * 0.5f).value.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.Red
+                            )
+                        }
+                        Text(
+                            text = "Выбрано: ${selectedPiece?.let {
+                                when(it) {
+                                    'K' -> "Белый король ♔"
+                                    'Q' -> "Белая ферзь ♕"
+                                    'R' -> "Белая ладья ♖"
+                                    'B' -> "Белый слон ♗"
+                                    'N' -> "Белый конь ♘"
+                                    'P' -> "Белая пешка ♙"
+                                    'k' -> "Черный король ♚"
+                                    'q' -> "Черная ферзь ♛"
+                                    'r' -> "Черная ладья ♜"
+                                    'b' -> "Черный слон ♝"
+                                    'n' -> "Черный конь ♞"
+                                    'p' -> "Черная пешка ♟"
+                                    ' ' -> "Удалить фигуру"
+                                    else -> ""
+                                }
+                            } ?: "Ничего не выбрано"}",
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+
+                // Шахматная доска
+                Box(
+                    modifier = Modifier
+                        .width(boardSize)
+                        .height(boardSize)
+                        .background(Color.LightGray)
+                        .align(Alignment.CenterHorizontally)
+                ) {
+                    // Рисуем доску и фигуры
+                    for (row in 0 until 8) {
+                        for (col in 0 until 8) {
+                            val color = if ((row + col) % 2 == 0) Color(0xFFF0D9B5) else Color(0xFFB58863)
+
+                            // Находим фигуру на этой клетке
+                            val pieceOnSquare = pieces.find { it.position == Pair(row, col) }
+                            val pieceSymbol = pieceOnSquare?.let { piece ->
+                                when (piece.type) {
+                                    'K' -> "♔"; 'Q' -> "♕"; 'R' -> "♖"; 'B' -> "♗"; 'N' -> "♘"; 'P' -> "♙"
+                                    'k' -> "♚"; 'q' -> "♛"; 'r' -> "♜"; 'b' -> "♝"; 'n' -> "♞"; 'p' -> "♟"
+                                    else -> ""
+                                }
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .size(squareSize)
+                                    .offset(x = col * squareSize, y = row * squareSize)
+                                    .background(color)
+                                    .border(1.dp, Color.Black)
+                                    .clickable {
+                                        if (selectedPiece != null) {
+                                            // Удаляем существующую фигуру на этой клетке
+                                            val newPieces = pieces.filterNot { it.position == Pair(row, col) }.toMutableList()
+
+                                            // Если выбран не пробел (не удаление), добавляем новую фигуру
+                                            if (selectedPiece != ' ') {
+                                                newPieces.add(ChessPiece(selectedPiece!!, Pair(row, col)))
+                                            }
+
+                                            pieces = newPieces
+                                            fenInput = generateFen(pieces)
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (pieceOnSquare != null) {
+                                    Text(
+                                        text = pieceSymbol ?: "",
+                                        fontSize = pieceIconSize.value.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (pieceOnSquare.type.isUpperCase()) Color.Black else Color.Black
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Button(
+                        onClick = {
+                            pieces = emptyList()
+                            fenInput = "8/8/8/8/8/8/8/8"
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Очистить")
+                    }
+
+                    Button(
+                        onClick = {
+                            pieces = parseFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR")
+                            fenInput = generateFen(pieces)
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Стартовая")
+                    }
+                }
+
+                // Поле ввода FEN (перемещено вниз)
+                OutlinedTextField(
+                    value = fenInput,
+                    onValueChange = { fenInput = it },
+                    label = { Text("FEN строка") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Button(
+                        onClick = {
+                            pieces = parseFen(fenInput)
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Загрузить FEN")
+                    }
+
+                    Button(
+                        onClick = {
+                            fenInput = generateFen(pieces)
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Сгенерировать FEN")
+                    }
+                }
+
+                // Кнопка для открытия в Lichess
+                Button(
+                    onClick = { openLichess() },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Search, contentDescription = "Открыть в Lichess")
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Открыть в Lichess")
                 }
             }
 
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth()
+            // Кнопка возврата в главное меню
+            Button(
+                onClick = onBack,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
             ) {
-                Button(
-                    onClick = {
-                        pieces = emptyList()
-                        fenInput = "8/8/8/8/8/8/8/8"
-                    },
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text("Очистить")
-                }
-
-                Button(
-                    onClick = {
-                        pieces = parseFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR")
-                        fenInput = generateFen(pieces)
-                    },
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text("Стартовая")
-                }
+                Icon(Icons.Default.ArrowBack, contentDescription = "Назад")
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Вернуться на главный экран")
             }
         }
     }
