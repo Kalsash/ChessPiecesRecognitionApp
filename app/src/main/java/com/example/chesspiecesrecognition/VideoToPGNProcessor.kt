@@ -30,6 +30,7 @@ class VideoToPGNProcessor(
     private val context: Context,
     private val tfLiteInterpreter: Interpreter,
     private val cropRect: RectF? = null,
+    private val frameIntervalMs: Long = 1000L, // Добавляем параметр интервала по умолчанию 1 секунда
     private val onProgressUpdate: (Int, String) -> Unit = { _, _ -> }
 ) {
     private var isCancelled = false
@@ -45,7 +46,7 @@ class VideoToPGNProcessor(
     }
 
     fun processVideoToPGN(videoUri: Uri, startTime: Long, endTime: Long?, callback: (String) -> Unit) {
-        Log.d("VideoProcessing", "processVideoToPGN with time range: $startTime - $endTime")
+        Log.d("VideoProcessing", "processVideoToPGN with time range: $startTime - $endTime, interval: ${frameIntervalMs}ms")
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 if (isCancelled) return@launch
@@ -94,7 +95,7 @@ class VideoToPGNProcessor(
     }
 
     private fun extractFramesFromVideo(videoUri: Uri, startTime: Long = 0L, endTime: Long? = null): File {
-        Log.d("VideoProcessing", "extractFramesFromVideo with startTime: $startTime, endTime: $endTime")
+        Log.d("VideoProcessing", "extractFramesFromVideo with startTime: $startTime, endTime: $endTime, interval: ${frameIntervalMs}ms")
         val framesDir = File(context.cacheDir, "chess_video_frames").apply { mkdirs() }
         val retriever = MediaMetadataRetriever().apply {
             setDataSource(context, videoUri)
@@ -113,12 +114,12 @@ class VideoToPGNProcessor(
             throw IllegalArgumentException("Видео слишком короткое для обработки (минимум 1 секунда)")
         }
 
-        val frameInterval = 1_000_000 // 1 frame per second
+        val frameInterval = frameIntervalMs * 1000L // convert ms to microseconds
         var currentTimeUs = startTime * 1000 // convert ms to microseconds
         var frameCount = 0
         val totalFrames = ((actualEndTime - startTime) * 1000 / frameInterval).toInt()
 
-        Log.d("VideoProcessing", "Duration: $duration, Start: $startTime, End: $actualEndTime, Total frames: $totalFrames")
+        Log.d("VideoProcessing", "Duration: $duration, Start: $startTime, End: $actualEndTime, Total frames: $totalFrames, Interval: ${frameIntervalMs}ms")
 
         while (currentTimeUs < actualEndTime * 1000 && !isCancelled) {
             retriever.getFrameAtTime(currentTimeUs, MediaMetadataRetriever.OPTION_CLOSEST)?.let { bitmap ->
@@ -147,13 +148,13 @@ class VideoToPGNProcessor(
                 frameCount++
 
                 val progress = ((currentTimeUs - startTime * 1000) * 30 / ((actualEndTime - startTime) * 1000)).toInt()
-                onProgressUpdate(progress, "Извлечено $frameCount/$totalFrames кадров")
+                onProgressUpdate(progress, "Извлечено $frameCount/$totalFrames кадров (интервал: ${frameIntervalMs}ms)")
             }
             currentTimeUs += frameInterval
         }
 
         retriever.release()
-        Log.d("VideoProcessing", "Extracted $frameCount frames")
+        Log.d("VideoProcessing", "Extracted $frameCount frames with ${frameIntervalMs}ms interval")
         return framesDir
     }
 

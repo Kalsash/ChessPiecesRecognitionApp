@@ -51,6 +51,7 @@ class MainActivity : ComponentActivity() {
             var videoToProcess by remember { mutableStateOf<Uri?>(null) }
             var videoStartTime by remember { mutableStateOf(0L) }
             var videoEndTime by remember { mutableStateOf(0L) }
+            var frameIntervalMs by remember { mutableStateOf(1000L) } // Интервал по умолчанию 1 секунда
             var isLoading by remember { mutableStateOf(false) }
             var isVideoProcessing by remember { mutableStateOf(false) }
             var processingProgress by remember { mutableStateOf(0) }
@@ -105,9 +106,10 @@ class MainActivity : ComponentActivity() {
                     videoToProcess?.let { uri ->
                         VideoTrimmerScreen(
                             videoUri = uri,
-                            onTrimConfirmed = { start, end ->
+                            onTrimConfirmed = { start, end, interval ->
                                 videoStartTime = start
                                 videoEndTime = end
+                                frameIntervalMs = interval as Long // Сохраняем интервал
                                 showVideoTrimmer = false
                                 extractFirstFrame(uri, start)?.let { frame ->
                                     imageCropper.currentBitmap = frame
@@ -133,6 +135,7 @@ class MainActivity : ComponentActivity() {
                                         uri = uri,
                                         startTime = videoStartTime,
                                         endTime = videoEndTime,
+                                        frameIntervalMs = frameIntervalMs, // Передаем интервал
                                         coroutineScope = coroutineScope,
                                         onProgressUpdate = { progress, status ->
                                             processingProgress = progress
@@ -181,12 +184,13 @@ class MainActivity : ComponentActivity() {
         uri: Uri,
         startTime: Long,
         endTime: Long,
+        frameIntervalMs: Long, // Добавляем параметр интервала
         coroutineScope: CoroutineScope,
         onProgressUpdate: (Int, String) -> Unit,
         onComplete: () -> Unit
     ) {
         coroutineScope.launch {
-            Log.d("VideoProcessing", "Starting video processing coroutine with time range: $startTime - $endTime")
+            Log.d("VideoProcessing", "Starting video processing coroutine with time range: $startTime - $endTime, interval: ${frameIntervalMs}ms")
             try {
                 Log.d("VideoProcessing", "Entered try block")
 
@@ -194,6 +198,7 @@ class MainActivity : ComponentActivity() {
                     this@MainActivity,
                     tfLiteInterpreter,
                     imageCropper.cropRect,
+                    frameIntervalMs, // Передаем интервал
                     onProgressUpdate = onProgressUpdate
                 )
                 Log.d("VideoProcessing", "Entered Processor")
