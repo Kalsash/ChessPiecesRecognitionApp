@@ -45,9 +45,12 @@ class MainActivity : ComponentActivity() {
         setContent {
             var showHistory by remember { mutableStateOf(false) }
             var showAbout by remember { mutableStateOf(false) }
-            var showFenEditor by remember { mutableStateOf(false) } // Добавляем состояние для FEN редактора
+            var showFenEditor by remember { mutableStateOf(false) }
+            var showVideoTrimmer by remember { mutableStateOf(false) }
             var showVideoCropper by remember { mutableStateOf(false) }
             var videoToProcess by remember { mutableStateOf<Uri?>(null) }
+            var videoStartTime by remember { mutableStateOf(0L) }
+            var videoEndTime by remember { mutableStateOf(0L) }
             var isLoading by remember { mutableStateOf(false) }
             var isVideoProcessing by remember { mutableStateOf(false) }
             var processingProgress by remember { mutableStateOf(0) }
@@ -93,10 +96,30 @@ class MainActivity : ComponentActivity() {
                         onBack = { showAbout = false }
                     )
                 }
-                showFenEditor -> { // Добавляем экран FEN редактора
+                showFenEditor -> {
                     FenEditorScreen(
                         onBack = { showFenEditor = false }
                     )
+                }
+                showVideoTrimmer -> {
+                    videoToProcess?.let { uri ->
+                        VideoTrimmerScreen(
+                            videoUri = uri,
+                            onTrimConfirmed = { start, end ->
+                                videoStartTime = start
+                                videoEndTime = end
+                                showVideoTrimmer = false
+                                extractFirstFrame(uri, start)?.let { frame ->
+                                    imageCropper.currentBitmap = frame
+                                    showVideoCropper = true
+                                }
+                            },
+                            onCancel = {
+                                showVideoTrimmer = false
+                                videoToProcess = null
+                            }
+                        )
+                    }
                 }
                 showVideoCropper -> {
                     imageCropper.currentBitmap?.let {
@@ -108,6 +131,8 @@ class MainActivity : ComponentActivity() {
                                     isVideoProcessing = true
                                     processVideoWithProgress(
                                         uri = uri,
+                                        startTime = videoStartTime,
+                                        endTime = videoEndTime,
                                         coroutineScope = coroutineScope,
                                         onProgressUpdate = { progress, status ->
                                             processingProgress = progress
@@ -141,13 +166,10 @@ class MainActivity : ComponentActivity() {
                         onShowHistory = { showHistory = true },
                         onShowAbout = { showAbout = true },
                         onProcessVideo = { uri ->
-                            extractFirstFrame(uri)?.let { frame ->
-                                imageCropper.currentBitmap = frame
-                                showVideoCropper = true
-                                videoToProcess = uri
-                            }
+                            videoToProcess = uri
+                            showVideoTrimmer = true
                         },
-                        onFenEditor = { showFenEditor = true }, // Добавляем обработчик для FEN редактора
+                        onFenEditor = { showFenEditor = true },
                         viewModel = historyViewModel
                     )
                 }
@@ -157,12 +179,14 @@ class MainActivity : ComponentActivity() {
 
     private fun processVideoWithProgress(
         uri: Uri,
+        startTime: Long,
+        endTime: Long,
         coroutineScope: CoroutineScope,
         onProgressUpdate: (Int, String) -> Unit,
         onComplete: () -> Unit
     ) {
         coroutineScope.launch {
-            Log.d("VideoProcessing", "Starting video processing coroutine")
+            Log.d("VideoProcessing", "Starting video processing coroutine with time range: $startTime - $endTime")
             try {
                 Log.d("VideoProcessing", "Entered try block")
 
@@ -173,7 +197,7 @@ class MainActivity : ComponentActivity() {
                     onProgressUpdate = onProgressUpdate
                 )
                 Log.d("VideoProcessing", "Entered Processor")
-                videoProcessor?.processVideoToPGN(uri) { pgn ->
+                videoProcessor?.processVideoToPGN(uri, startTime, endTime) { pgn ->
                     coroutineScope.launch {
                         Log.d("VideoProcessing", "Video Ended")
                         if (pgn.startsWith("Error:")) {
@@ -222,12 +246,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun extractFirstFrame(videoUri: Uri): Bitmap? {
+    private fun extractFirstFrame(videoUri: Uri, timeMs: Long = 0): Bitmap? {
         return try {
             val retriever = MediaMetadataRetriever().apply {
                 setDataSource(this@MainActivity, videoUri)
             }
-            val bitmap = retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST)
+            val bitmap = retriever.getFrameAtTime(timeMs * 1000, MediaMetadataRetriever.OPTION_CLOSEST)
             retriever.release()
             bitmap
         } catch (e: Exception) {

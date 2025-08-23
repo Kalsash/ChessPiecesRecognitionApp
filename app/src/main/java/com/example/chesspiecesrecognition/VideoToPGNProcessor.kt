@@ -1,13 +1,11 @@
 package com.example.chesspiecesrecognition
 
 import android.content.Context
-import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.RectF
 import android.media.MediaMetadataRetriever
 import android.net.Uri
-import android.provider.MediaStore
 import android.util.Log
 import android.widget.Toast
 import com.github.bhlangonijr.chesslib.Board
@@ -43,13 +41,17 @@ class VideoToPGNProcessor(
     }
 
     fun processVideoToPGN(videoUri: Uri, callback: (String) -> Unit) {
-        Log.d("VideoProcessing", "processVideoToPGN(")
+        processVideoToPGN(videoUri, 0L, null, callback)
+    }
+
+    fun processVideoToPGN(videoUri: Uri, startTime: Long, endTime: Long?, callback: (String) -> Unit) {
+        Log.d("VideoProcessing", "processVideoToPGN with time range: $startTime - $endTime")
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 if (isCancelled) return@launch
 
                 onProgressUpdate(0, "Извлечение кадров...")
-                val framesDir = extractFramesFromVideo(videoUri)
+                val framesDir = extractFramesFromVideo(videoUri, startTime, endTime)
 
                 if (isCancelled) {
                     framesDir.deleteRecursively()
@@ -79,16 +81,20 @@ class VideoToPGNProcessor(
                 _currentFrame.value = null // Очищаем последний кадр
                 callback(pgn)
                 framesDir.deleteRecursively()
+            } catch (e: IllegalArgumentException) {
+                Log.d("VideoProcessing", "Video too short", e)
+                _currentFrame.value = null
+                callback("Error: ${e.message}")
             } catch (e: Exception) {
-                Log.d("VideoProcessing", "processVideoToPGN Error")
+                Log.d("VideoProcessing", "processVideoToPGN Error", e)
                 _currentFrame.value = null
                 callback("Error: ${e.message}")
             }
         }
     }
 
-    private fun extractFramesFromVideo(videoUri: Uri): File {
-        Log.d("VideoProcessing", "extractFramesFromVideo")
+    private fun extractFramesFromVideo(videoUri: Uri, startTime: Long = 0L, endTime: Long? = null): File {
+        Log.d("VideoProcessing", "extractFramesFromVideo with startTime: $startTime, endTime: $endTime")
         val framesDir = File(context.cacheDir, "chess_video_frames").apply { mkdirs() }
         val retriever = MediaMetadataRetriever().apply {
             setDataSource(context, videoUri)
@@ -98,12 +104,23 @@ class VideoToPGNProcessor(
             MediaMetadataRetriever.METADATA_KEY_DURATION
         )?.toLong() ?: 0L
 
-        val frameInterval = 1_000_000 // 1 frame per second
-        var currentTimeUs = 0L
-        var frameCount = 0
-        val totalFrames = (duration * 1000 / frameInterval).toInt()
+        val actualEndTime = endTime ?: duration
+        val videoDuration = actualEndTime - startTime
 
-        while (currentTimeUs < duration * 1000 && !isCancelled) {
+        // Проверка минимальной длительности
+        if (videoDuration < 1000) {
+            retriever.release()
+            throw IllegalArgumentException("Видео слишком короткое для обработки (минимум 1 секунда)")
+        }
+
+        val frameInterval = 1_000_000 // 1 frame per second
+        var currentTimeUs = startTime * 1000 // convert ms to microseconds
+        var frameCount = 0
+        val totalFrames = ((actualEndTime - startTime) * 1000 / frameInterval).toInt()
+
+        Log.d("VideoProcessing", "Duration: $duration, Start: $startTime, End: $actualEndTime, Total frames: $totalFrames")
+
+        while (currentTimeUs < actualEndTime * 1000 && !isCancelled) {
             retriever.getFrameAtTime(currentTimeUs, MediaMetadataRetriever.OPTION_CLOSEST)?.let { bitmap ->
                 val croppedBitmap = cropRect?.let { rect ->
                     // Используем относительные координаты для обрезки
@@ -129,13 +146,14 @@ class VideoToPGNProcessor(
                 }
                 frameCount++
 
-                val progress = (currentTimeUs * 30 / (duration * 1000)).toInt()
+                val progress = ((currentTimeUs - startTime * 1000) * 30 / ((actualEndTime - startTime) * 1000)).toInt()
                 onProgressUpdate(progress, "Извлечено $frameCount/$totalFrames кадров")
             }
             currentTimeUs += frameInterval
         }
 
         retriever.release()
+        Log.d("VideoProcessing", "Extracted $frameCount frames")
         return framesDir
     }
 
