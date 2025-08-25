@@ -127,7 +127,7 @@ class MainActivity : ComponentActivity() {
                     imageCropper.currentBitmap?.let {
                         ImageCropperScreen(
                             imageCropper = imageCropper,
-                            onCropConfirmed = {
+                            onCropConfirmed = { isBlackPlayer -> // Принимаем параметр
                                 showVideoCropper = false
                                 videoToProcess?.let { uri ->
                                     isVideoProcessing = true
@@ -135,7 +135,8 @@ class MainActivity : ComponentActivity() {
                                         uri = uri,
                                         startTime = videoStartTime,
                                         endTime = videoEndTime,
-                                        frameIntervalMs = frameIntervalMs, // Передаем интервал
+                                        frameIntervalMs = frameIntervalMs,
+                                        isBlackPlayer = isBlackPlayer, // Передаем информацию
                                         coroutineScope = coroutineScope,
                                         onProgressUpdate = { progress, status ->
                                             processingProgress = progress
@@ -184,13 +185,14 @@ class MainActivity : ComponentActivity() {
         uri: Uri,
         startTime: Long,
         endTime: Long,
-        frameIntervalMs: Long, // Добавляем параметр интервала
+        frameIntervalMs: Long,
+        isBlackPlayer: Boolean, // Добавляем параметр
         coroutineScope: CoroutineScope,
         onProgressUpdate: (Int, String) -> Unit,
         onComplete: () -> Unit
     ) {
         coroutineScope.launch {
-            Log.d("VideoProcessing", "Starting video processing coroutine with time range: $startTime - $endTime, interval: ${frameIntervalMs}ms")
+            Log.d("VideoProcessing", "Starting video processing coroutine with time range: $startTime - $endTime, interval: ${frameIntervalMs}ms, isBlackPlayer: $isBlackPlayer")
             try {
                 Log.d("VideoProcessing", "Entered try block")
 
@@ -198,7 +200,8 @@ class MainActivity : ComponentActivity() {
                     this@MainActivity,
                     tfLiteInterpreter,
                     imageCropper.cropRect,
-                    frameIntervalMs, // Передаем интервал
+                    frameIntervalMs,
+                    isBlackPlayer, // Передаем информацию о цвете
                     onProgressUpdate = onProgressUpdate
                 )
                 Log.d("VideoProcessing", "Entered Processor")

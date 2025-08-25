@@ -284,12 +284,13 @@ class ImageCropper(private val context: Context) {
 @Composable
 fun ImageCropperScreen(
     imageCropper: ImageCropper,
-    onCropConfirmed: () -> Unit,
+    onCropConfirmed: (Boolean) -> Unit, // Добавляем параметр для передачи информации о цвете
     onCancel: () -> Unit
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
     var showPreview by remember { mutableStateOf(false) }
+    var isBlackPlayer by remember { mutableStateOf(false) } // Состояние для галочки
 
     val cornerSizePx = with(density) { 20.dp.toPx() }
     val dragCornerSizePx = with(density) { 40.dp.toPx() }
@@ -307,6 +308,25 @@ fun ImageCropperScreen(
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.padding(bottom = 16.dp)
         )
+
+        // Добавляем переключатель цвета игрока
+        if (!showPreview) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Checkbox(
+                    checked = isBlackPlayer,
+                    onCheckedChange = { isBlackPlayer = it }
+                )
+                Text(
+                    text = "Игрок играет черными фигурами",
+                    modifier = Modifier.padding(start = 8.dp)
+                )
+            }
+        }
 
         Box(
             modifier = Modifier
@@ -406,7 +426,7 @@ fun ImageCropperScreen(
                 Button(
                     onClick = {
                         imageCropper.saveCropParameters()
-                        onCropConfirmed()
+                        onCropConfirmed(isBlackPlayer) // Передаем информацию о цвете
                     }
                 ) {
                     Text("Подтвердить и обработать")

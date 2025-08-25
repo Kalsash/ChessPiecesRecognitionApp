@@ -31,6 +31,7 @@ class VideoToPGNProcessor(
     private val tfLiteInterpreter: Interpreter,
     private val cropRect: RectF? = null,
     private val frameIntervalMs: Long = 1000L, // Добавляем параметр интервала по умолчанию 1 секунда
+    private val isBlackPlayer: Boolean = false,
     private val onProgressUpdate: (Int, String) -> Unit = { _, _ -> }
 ) {
     private var isCancelled = false
@@ -316,9 +317,102 @@ class VideoToPGNProcessor(
         }
     }
 
+    fun invertFen(fen: String): String {
+        /**
+         * Инвертирует FEN-позицию (переворачивает доску на 180 градусов)
+         *
+         * @param fen исходная FEN-строка
+         * @return инвертированная FEN-строка
+         */
+        val parts = fen.split(" ")
+
+        if (parts.size < 6) {
+            throw IllegalArgumentException("Некорректный формат FEN")
+        }
+
+        // 1. Инвертируем позицию фигур
+        val board = parts[0]
+        val rows = board.split("/")
+
+        val invertedRows = mutableListOf<String>()
+        for (row in rows.reversed()) {
+            val invertedRow = row.reversed()
+            invertedRows.add(invertedRow.toString())
+        }
+
+        val invertedBoard = invertedRows.joinToString("/")
+
+        // 2. Меняем цвет активного игрока
+        val activeColor = parts[1]
+        val invertedColor = if (activeColor == "b") "w" else "b"
+
+        // 3. Кастинговые права - инвертируем порядок
+        val castling = parts[2]
+        val invertedCastling = if (castling == "-") {
+            "-"
+        } else {
+            val transformed = buildString {
+                for (char in castling) {
+                    if (char.isUpperCase()) {
+                        append(char.lowercaseChar())
+                    } else {
+                        append(char.uppercaseChar())
+                    }
+                }
+            }
+
+            val standardOrder = listOf('K', 'Q', 'k', 'q')
+            val sortedCastling = mutableListOf<Char>()
+            for (char in standardOrder) {
+                if (char in transformed) {
+                    sortedCastling.add(char)
+                }
+            }
+            if (sortedCastling.isNotEmpty()) sortedCastling.joinToString("") else "-"
+        }
+
+        // 4. Поля взятия на проходе - инвертируем координату
+        val enPassant = parts[3]
+        val invertedEnPassant = if (enPassant == "-") {
+            "-"
+        } else {
+            val fileChar = enPassant[0]
+            val rank = enPassant[1].toString().toInt()
+
+            // Инвертируем вертикаль (a->h, b->g, etc.)
+            val invertedFile = 'h' - (fileChar - 'a')
+            // Инвертируем горизонталь (1->8, 2->7, etc.)
+            val invertedRank = 9 - rank
+            "$invertedFile$invertedRank"
+        }
+
+        // 5. Полуходы и полные ходы остаются без изменений
+        val halfmoveClock = parts[4]
+        val fullmoveNumber = parts[5]
+
+        // Собираем инвертированный FEN
+        val invertedFenParts = mutableListOf(
+            invertedBoard,
+            invertedColor,
+            invertedCastling,
+            invertedEnPassant,
+            halfmoveClock,
+            fullmoveNumber
+        )
+
+        // Добавляем оставшиеся части, если они есть
+        if (parts.size > 6) {
+            invertedFenParts.addAll(parts.subList(6, parts.size))
+        }
+
+        return invertedFenParts.joinToString(" ")
+    }
+
     private fun correctFenSequence(fens: List<String>): List<String> {
         Log.d("VideoProcessing", "correctFenSequence")
         if (fens.isEmpty()) return emptyList()
+
+
 
         val board = Board()
         board.loadFromFen(fens[0])
@@ -327,7 +421,15 @@ class VideoToPGNProcessor(
 
         for (i in 1 until fens.size) {
             val tempBoard = Board()
+            if (isBlackPlayer)
+            {
+                tempBoard.loadFromFen(invertFen(fens[i]))
+                Log.d("Black", isBlackPlayer.toString())
+            }
+                else
             tempBoard.loadFromFen(fens[i])
+
+            Log.d("Chess_Fen",invertFen(fens[i]).toString())
 
             // Находим изменения
             val changes = mutableListOf<Triple<Square, Piece?, Piece?>>()
@@ -380,6 +482,7 @@ class VideoToPGNProcessor(
                 }
 
                 if (diffCount <= 2) {
+
                     bestDiffCount = diffCount
                     bestMove = move
                     if (diffCount == 0) break
@@ -394,6 +497,7 @@ class VideoToPGNProcessor(
             }
         }
         println(recognitionErrors)
+        Log.d("Chess_Fen",corrected.distinct().toString())
         return corrected.distinct()
     }
 
