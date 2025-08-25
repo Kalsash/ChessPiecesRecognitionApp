@@ -421,13 +421,12 @@ class VideoToPGNProcessor(
 
         for (i in 1 until fens.size) {
             val tempBoard = Board()
-            if (isBlackPlayer)
-            {
+            if (isBlackPlayer) {
                 tempBoard.loadFromFen(invertFen(fens[i]))
                 Log.d("Black", isBlackPlayer.toString())
+            } else {
+                tempBoard.loadFromFen(fens[i])
             }
-                else
-            tempBoard.loadFromFen(fens[i])
 
             Log.d("Chess_Fen",invertFen(fens[i]).toString())
 
