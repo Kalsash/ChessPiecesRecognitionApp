@@ -415,11 +415,11 @@ class VideoToPGNProcessor(
 
 
         val board = Board()
-        board.loadFromFen(fens[0])
+        board.loadFromFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
         val corrected = mutableListOf(normalizeFen(board.fen))
         val recognitionErrors = mutableSetOf<Triple<Square, Piece?, Piece?>>()
 
-        for (i in 1 until fens.size) {
+        for (i in 0 until fens.size) {
             val tempBoard = Board()
             if (isBlackPlayer) {
                 tempBoard.loadFromFen(invertFen(fens[i]))
