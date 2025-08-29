@@ -416,7 +416,7 @@ class VideoToPGNProcessor(
 
         val board = Board()
         board.loadFromFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
-        val corrected = mutableListOf(normalizeFen(board.fen))
+        val corrected = mutableListOf((board.fen))
         val recognitionErrors = mutableSetOf<Triple<Square, Piece?, Piece?>>()
 
         for (i in 0 until fens.size) {
@@ -489,21 +489,15 @@ class VideoToPGNProcessor(
             }
             if (bestMove != null && bestDiffCount <= 2) {
                 board.doMove(bestMove)
-                corrected.add(normalizeFen(board.fen))
+                corrected.add((board.fen))
             }
             else {
-                corrected.add(normalizeFen(board.fen))
+                corrected.add((board.fen))
             }
         }
         println(recognitionErrors)
         Log.d("Chess_Fen",corrected.distinct().toString())
         return corrected.distinct()
-    }
-
-    private fun normalizeFen(fen: String): String {
-        // Удаляем информацию о количестве ходов и полуходов, оставляя только позицию и очередь хода
-        val parts = fen.split(" ")
-        return "${parts[0]} ${parts[1]} - - 0 1"
     }
 
     private fun generatePGN(fens: List<String>): String {
