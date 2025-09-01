@@ -116,7 +116,9 @@ class ImageCropper(private val context: Context) {
         rectStrokeWidthPx: Float,
         cornerStrokeWidthPx: Float,
         rectColor: Color = Color.Red,
-        cornerColor: Color = Color.Blue
+        cornerColor: Color = Color.Blue,
+        gridColor: Color = Color.White.copy(alpha = 0.7f),
+        darkCellColor: Color = Color.Black.copy(alpha = 0.2f)
     ): androidx.compose.ui.graphics.drawscope.DrawScope.() -> Unit {
         return {
             if (imageDisplaySize.width > 0 && imageDisplaySize.height > 0) {
@@ -128,7 +130,7 @@ class ImageCropper(private val context: Context) {
                 val rectWidth = rectRight - rectLeft
                 val rectHeight = rectBottom - rectTop
 
-                // Рисуем прямоугольник обрезки
+                // Рисуем внешнюю рамку
                 drawRect(
                     color = rectColor,
                     topLeft = Offset(rectLeft, rectTop),
@@ -136,7 +138,47 @@ class ImageCropper(private val context: Context) {
                     style = Stroke(width = rectStrokeWidthPx)
                 )
 
-                // Рисуем углы
+                // Рисуем вертикальные линии шахматной сетки (8 колонок = 7 линий)
+                for (i in 1 until 8) {
+                    val x = rectLeft + (rectWidth * i / 8)
+                    drawLine(
+                        color = gridColor,
+                        start = Offset(x, rectTop),
+                        end = Offset(x, rectBottom),
+                        strokeWidth = rectStrokeWidthPx / 2
+                    )
+                }
+
+                // Рисуем горизонтальные линии шахматной сетки (8 рядов = 7 линий)
+                for (i in 1 until 8) {
+                    val y = rectTop + (rectHeight * i / 8)
+                    drawLine(
+                        color = gridColor,
+                        start = Offset(rectLeft, y),
+                        end = Offset(rectRight, y),
+                        strokeWidth = rectStrokeWidthPx / 2
+                    )
+                }
+
+                // Закрашиваем черные клетки шахматной доски
+                for (row in 0 until 8) {
+                    for (col in 0 until 8) {
+                        if ((row + col) % 2 == 1) {
+                            val cellLeft = rectLeft + (rectWidth * col / 8)
+                            val cellTop = rectTop + (rectHeight * row / 8)
+                            val cellWidth = rectWidth / 8
+                            val cellHeight = rectHeight / 8
+
+                            drawRect(
+                                color = darkCellColor,
+                                topLeft = Offset(cellLeft, cellTop),
+                                size = Size(cellWidth, cellHeight)
+                            )
+                        }
+                    }
+                }
+
+                // Рисуем углы для изменения размера
                 drawRect(
                     color = cornerColor,
                     topLeft = Offset(rectLeft, rectTop),
@@ -284,13 +326,13 @@ class ImageCropper(private val context: Context) {
 @Composable
 fun ImageCropperScreen(
     imageCropper: ImageCropper,
-    onCropConfirmed: (Boolean) -> Unit, // Добавляем параметр для передачи информации о цвете
+    onCropConfirmed: (Boolean) -> Unit,
     onCancel: () -> Unit
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
     var showPreview by remember { mutableStateOf(false) }
-    var isBlackPlayer by remember { mutableStateOf(false) } // Состояние для галочки
+    var isBlackPlayer by remember { mutableStateOf(false) }
 
     val cornerSizePx = with(density) { 20.dp.toPx() }
     val dragCornerSizePx = with(density) { 40.dp.toPx() }
@@ -309,7 +351,6 @@ fun ImageCropperScreen(
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
-        // Добавляем переключатель цвета игрока
         if (!showPreview) {
             Row(
                 modifier = Modifier
@@ -379,7 +420,11 @@ fun ImageCropperScreen(
                             imageCropper.getDrawCropRectLambda(
                                 cornerSizePx,
                                 rectStrokeWidthPx,
-                                cornerStrokeWidthPx
+                                cornerStrokeWidthPx,
+                                rectColor = Color.Red,
+                                cornerColor = Color.Blue,
+                                gridColor = Color.White.copy(alpha = 0.7f),
+                                darkCellColor = Color.Black.copy(alpha = 0.15f)
                             )()
                         }
                     }
@@ -426,7 +471,7 @@ fun ImageCropperScreen(
                 Button(
                     onClick = {
                         imageCropper.saveCropParameters()
-                        onCropConfirmed(isBlackPlayer) // Передаем информацию о цвете
+                        onCropConfirmed(isBlackPlayer)
                     }
                 ) {
                     Text("Подтвердить и обработать")
