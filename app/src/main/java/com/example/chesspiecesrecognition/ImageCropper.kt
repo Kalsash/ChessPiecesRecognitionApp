@@ -7,6 +7,7 @@ import android.graphics.RectF
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -17,13 +18,18 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
 
 sealed class DragMode {
     object NONE : DragMode()
@@ -43,8 +49,21 @@ class ImageCropper(private val context: Context) {
     var currentBitmap by mutableStateOf<Bitmap?>(null)
     var croppedBitmap by mutableStateOf<Bitmap?>(null)
     var containerSize by mutableStateOf(Size.Zero)
-    var imageDisplaySize by mutableStateOf(Size.Zero) // Фактический размер изображения на экране
-    var imageOffset by mutableStateOf(Offset.Zero) // Смещение изображения относительно контейнера
+    var imageDisplaySize by mutableStateOf(Size.Zero)
+    var imageOffset by mutableStateOf(Offset.Zero)
+
+    // Переменные для масштабирования изображения
+    private var _scale by mutableStateOf(1f)
+    var translation by mutableStateOf(Offset.Zero)
+
+    val scale: Float
+        get() = _scale
+
+    // Максимальное смещение для ограничения (50% от размера изображения) - только по X
+    val maxTranslationX: Float
+        get() = imageDisplaySize.width * 0.5f
+    val maxTranslationY: Float
+        get() = 0f // Убираем смещение по Y
 
     private val prefs = context.getSharedPreferences("CropPrefs", Context.MODE_PRIVATE)
 
@@ -67,11 +86,15 @@ class ImageCropper(private val context: Context) {
         )
     }
 
+    fun resetTransform() {
+        _scale = 1f
+        translation = Offset.Zero.copy(y = 0f) // Y всегда 0
+    }
+
     fun autoCrop(bitmap: Bitmap): Bitmap {
         val width = bitmap.width
         val height = bitmap.height
 
-        // Преобразуем относительные координаты в пиксельные координаты изображения
         val left = (cropRect.left * width).toInt()
         val top = (cropRect.top * height).toInt()
         val right = (cropRect.right * width).toInt()
@@ -94,8 +117,15 @@ class ImageCropper(private val context: Context) {
     fun screenToImageCoordinates(screenPoint: Offset): Offset {
         if (imageDisplaySize.width <= 0 || imageDisplaySize.height <= 0) return Offset.Zero
 
-        val xInImage = (screenPoint.x - imageOffset.x) / imageDisplaySize.width
-        val yInImage = (screenPoint.y - imageOffset.y) / imageDisplaySize.height
+        // Учитываем масштаб и смещение изображения
+        val scaledWidth = imageDisplaySize.width * _scale
+        val scaledHeight = imageDisplaySize.height * _scale
+
+        val offsetX = imageOffset.x + translation.x + (imageDisplaySize.width - scaledWidth) / 2
+        val offsetY = imageOffset.y + (imageDisplaySize.height - scaledHeight) / 2 // Убрали translation.y
+
+        val xInImage = (screenPoint.x - offsetX) / scaledWidth
+        val yInImage = (screenPoint.y - offsetY) / scaledHeight
 
         return Offset(
             xInImage.coerceIn(0f, 1f),
@@ -105,9 +135,15 @@ class ImageCropper(private val context: Context) {
 
     // Преобразование координат изображения (0-1) в координаты экрана
     fun imageToScreenCoordinates(imagePoint: Offset): Offset {
+        val scaledWidth = imageDisplaySize.width * _scale
+        val scaledHeight = imageDisplaySize.height * _scale
+
+        val offsetX = imageOffset.x + translation.x + (imageDisplaySize.width - scaledWidth) / 2
+        val offsetY = imageOffset.y + (imageDisplaySize.height - scaledHeight) / 2 // Убрали translation.y
+
         return Offset(
-            imagePoint.x * imageDisplaySize.width + imageOffset.x,
-            imagePoint.y * imageDisplaySize.height + imageOffset.y
+            imagePoint.x * scaledWidth + offsetX,
+            imagePoint.y * scaledHeight + offsetY
         )
     }
 
@@ -123,14 +159,14 @@ class ImageCropper(private val context: Context) {
         return {
             if (imageDisplaySize.width > 0 && imageDisplaySize.height > 0) {
                 // Преобразуем относительные координаты в экранные
-                val rectLeft = cropRect.left * imageDisplaySize.width + imageOffset.x
-                val rectTop = cropRect.top * imageDisplaySize.height + imageOffset.y
-                val rectRight = cropRect.right * imageDisplaySize.width + imageOffset.x
-                val rectBottom = cropRect.bottom * imageDisplaySize.height + imageOffset.y
+                val rectLeft = imageToScreenCoordinates(Offset(cropRect.left, cropRect.top)).x
+                val rectTop = imageToScreenCoordinates(Offset(cropRect.left, cropRect.top)).y
+                val rectRight = imageToScreenCoordinates(Offset(cropRect.right, cropRect.bottom)).x
+                val rectBottom = imageToScreenCoordinates(Offset(cropRect.right, cropRect.bottom)).y
                 val rectWidth = rectRight - rectLeft
                 val rectHeight = rectBottom - rectTop
 
-                // Рисуем внешнюю рамку
+                // Рисуем внешную рамку
                 drawRect(
                     color = rectColor,
                     topLeft = Offset(rectLeft, rectTop),
@@ -138,7 +174,7 @@ class ImageCropper(private val context: Context) {
                     style = Stroke(width = rectStrokeWidthPx)
                 )
 
-                // Рисуем вертикальные линии шахматной сетки (8 колонок = 7 линий)
+                // Рисуем вертикальные линии шахматной сетки
                 for (i in 1 until 8) {
                     val x = rectLeft + (rectWidth * i / 8)
                     drawLine(
@@ -149,7 +185,7 @@ class ImageCropper(private val context: Context) {
                     )
                 }
 
-                // Рисуем горизонтальные линии шахматной сетки (8 рядов = 7 линий)
+                // Рисуем горизонтальные линии шахматной сетки
                 for (i in 1 until 8) {
                     val y = rectTop + (rectHeight * i / 8)
                     drawLine(
@@ -211,7 +247,6 @@ class ImageCropper(private val context: Context) {
     }
 
     fun handleDragStart(screenStart: Offset, cornerSizePx: Float) {
-        // Преобразуем экранные координаты в координаты изображения
         val imageStart = screenToImageCoordinates(screenStart)
 
         val rectLeft = cropRect.left
@@ -220,7 +255,7 @@ class ImageCropper(private val context: Context) {
         val rectBottom = cropRect.bottom
 
         // Преобразуем размер угла в относительные единицы
-        val relativeCornerSize = cornerSizePx / imageDisplaySize.width
+        val relativeCornerSize = cornerSizePx / (imageDisplaySize.width * _scale)
 
         dragMode = when {
             abs(imageStart.x - rectLeft) < relativeCornerSize &&
@@ -245,8 +280,8 @@ class ImageCropper(private val context: Context) {
     fun handleDrag(screenChange: Offset) {
         if (isDragging && imageDisplaySize.width > 0 && imageDisplaySize.height > 0) {
             // Преобразуем экранное смещение в относительное смещение изображения
-            val dx = screenChange.x / imageDisplaySize.width
-            val dy = screenChange.y / imageDisplaySize.height
+            val dx = screenChange.x / (imageDisplaySize.width * _scale)
+            val dy = screenChange.y / (imageDisplaySize.height * _scale)
 
             cropRect = when (dragMode) {
                 DragMode.MOVE -> RectF(
@@ -282,7 +317,6 @@ class ImageCropper(private val context: Context) {
                 else -> cropRect
             }
 
-            // Автоматически обновляем предпросмотр при изменении области
             currentBitmap?.let { updatePreview(it) }
         }
     }
@@ -290,6 +324,38 @@ class ImageCropper(private val context: Context) {
     fun handleDragEnd() {
         isDragging = false
         dragMode = DragMode.NONE
+    }
+
+    // Обработка жестов масштабирования изображения
+    fun handleTransformGesture(center: Offset, pan: Offset, zoom: Float, rotation: Float) {
+        if (imageDisplaySize.width > 0 && imageDisplaySize.height > 0) {
+            // Масштабирование изображения
+            val newScale = (_scale * zoom).coerceIn(0.5f, 5f)
+
+            // Панорамирование только по X
+            val newTranslationX = translation.x + pan.x
+
+            // Ограничиваем смещение только по X
+            val limitedTranslationX = newTranslationX.coerceIn(-maxTranslationX, maxTranslationX)
+
+            _scale = newScale
+            translation = Offset(limitedTranslationX, 0f) // Y всегда 0
+        }
+    }
+
+    // Установка масштаба изображения через слайдер
+    fun updateScale(newScale: Float) {
+        _scale = newScale.coerceIn(0.5f, 5f)
+    }
+
+    // Установка смещения по X
+    fun updateTranslationX(newX: Float) {
+        translation = Offset(newX.coerceIn(-maxTranslationX, maxTranslationX), 0f) // Y всегда 0
+    }
+
+    // Установка смещения по Y - всегда 0
+    fun updateTranslationY(newY: Float) {
+        translation = Offset(translation.x, 0f) // Y всегда 0
     }
 
     // Вычисление размера и позиции изображения на экране
@@ -300,7 +366,6 @@ class ImageCropper(private val context: Context) {
         val imageAspect = bitmap.width.toFloat() / bitmap.height.toFloat()
 
         if (containerAspect > imageAspect) {
-            // Контейнер шире изображения - изображение занимает всю высоту
             imageDisplaySize = Size(
                 containerSize.height * imageAspect,
                 containerSize.height
@@ -310,7 +375,6 @@ class ImageCropper(private val context: Context) {
                 0f
             )
         } else {
-            // Контейнер уже изображения - изображение занимает всю ширину
             imageDisplaySize = Size(
                 containerSize.width,
                 containerSize.width / imageAspect
@@ -320,6 +384,17 @@ class ImageCropper(private val context: Context) {
                 (containerSize.height - imageDisplaySize.height) / 2
             )
         }
+    }
+
+    // Получение параметров отображения изображения для Canvas
+    fun getImageDrawParams(): Pair<Offset, Size> {
+        val scaledWidth = imageDisplaySize.width * _scale
+        val scaledHeight = imageDisplaySize.height * _scale
+
+        val offsetX = imageOffset.x + translation.x + (imageDisplaySize.width - scaledWidth) / 2
+        val offsetY = imageOffset.y + (imageDisplaySize.height - scaledHeight) / 2 // Убрали translation.y
+
+        return Pair(Offset(offsetX, offsetY), Size(scaledWidth, scaledHeight))
     }
 }
 
@@ -351,24 +426,6 @@ fun ImageCropperScreen(
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
-        if (!showPreview) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Checkbox(
-                    checked = isBlackPlayer,
-                    onCheckedChange = { isBlackPlayer = it }
-                )
-                Text(
-                    text = "Игрок играет черными фигурами",
-                    modifier = Modifier.padding(start = 8.dp)
-                )
-            }
-        }
-
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -382,12 +439,18 @@ fun ImageCropperScreen(
                 }
                 .pointerInput(showPreview) {
                     if (imageCropper.showCropRect && !showPreview) {
+                        // Обработка масштабирования изображения (двумя пальцами)
+                        detectTransformGestures { centroid, pan, zoom, rotation ->
+                            imageCropper.handleTransformGesture(centroid, pan, zoom, rotation)
+                        }
+                    }
+                }
+                .pointerInput(showPreview) {
+                    if (imageCropper.showCropRect && !showPreview) {
+                        // Обработка перетаскивания для изменения области обрезки (одним пальцем)
                         detectDragGestures(
                             onDragStart = { start ->
-                                imageCropper.handleDragStart(
-                                    start,
-                                    dragCornerSizePx
-                                )
+                                imageCropper.handleDragStart(start, dragCornerSizePx)
                             },
                             onDrag = { change, dragAmount ->
                                 imageCropper.handleDrag(dragAmount)
@@ -408,15 +471,27 @@ fun ImageCropperScreen(
                 }
             } else {
                 imageCropper.currentBitmap?.let { bitmap ->
-                    Image(
-                        bitmap = bitmap.asImageBitmap(),
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Fit
-                    )
+                    // Отображаем изображение с учетом масштаба и смещения
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val (offset, size) = imageCropper.getImageDrawParams()
 
-                    if (imageCropper.showCropRect) {
-                        Canvas(modifier = Modifier.fillMaxSize()) {
+                        // Рисуем изображение с помощью nativeCanvas для лучшего контроля
+                        drawIntoCanvas { canvas ->
+                            canvas.nativeCanvas.drawBitmap(
+                                bitmap,
+                                null,
+                                android.graphics.RectF(
+                                    offset.x,
+                                    offset.y,
+                                    offset.x + size.width,
+                                    offset.y + size.height
+                                ),
+                                null
+                            )
+                        }
+
+                        // Рисуем рамку обрезки поверх изображения
+                        if (imageCropper.showCropRect) {
                             imageCropper.getDrawCropRectLambda(
                                 cornerSizePx,
                                 rectStrokeWidthPx,
@@ -436,6 +511,80 @@ fun ImageCropperScreen(
                         Text("Изображение не загружено")
                     }
                 }
+            }
+        }
+
+        if (!showPreview) {
+            // Секция управления масштабом и смещением
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Масштаб
+                Column {
+                    Text(
+                        text = "Масштаб: ${String.format("%.2f", imageCropper.scale)}",
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    Slider(
+                        value = imageCropper.scale,
+                        onValueChange = { imageCropper.updateScale(it) },
+                        valueRange = 0.5f..5f,
+                        steps = 4500,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        text = "Диапазон: 0.50 - 5.00",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+
+                // Смещение по X (влево/вправо)
+                Column {
+                    Text(
+                        text = "Смещение X: ${String.format("%.1f", imageCropper.translation.x)}",
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    Slider(
+                        value = imageCropper.translation.x,
+                        onValueChange = { imageCropper.updateTranslationX(it) },
+                        valueRange = -imageCropper.maxTranslationX..imageCropper.maxTranslationX,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+
+            // Кнопка "Игрок играет черными фигурами" перемещена вниз
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Checkbox(
+                    checked = isBlackPlayer,
+                    onCheckedChange = { isBlackPlayer = it }
+                )
+                Text(
+                    text = "Игрок играет черными фигурами",
+                    modifier = Modifier.padding(start = 8.dp)
+                )
+            }
+
+            // Кнопка "Сбросить все" сделана меньше
+            Button(
+                onClick = { imageCropper.resetTransform() },
+                modifier = Modifier
+                    .padding(bottom = 16.dp)
+                    .height(36.dp), // Уменьшаем высоту кнопки
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.secondary
+                )
+            ) {
+                Text("Сбросить все", fontSize = 14.sp) // Уменьшаем размер текста
             }
         }
 
