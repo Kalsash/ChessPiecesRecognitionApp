@@ -22,6 +22,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import java.io.File
+import android.content.ClipData
+import android.content.ClipboardManager
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.runtime.*
+import kotlinx.coroutines.delay
+import java.net.URLDecoder
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -70,7 +78,6 @@ fun HistoryScreen(
     }
 }
 
-
 @Composable
 fun HistoryItemCard(
     item: HistoryItem,
@@ -79,11 +86,32 @@ fun HistoryItemCard(
 ) {
     val context = LocalContext.current
     val bitmap = remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+    var showCopySuccess by remember { mutableStateOf(false) }
 
     LaunchedEffect(item.imageUri) {
         val loadedBitmap = FileUtils.loadBitmapFromInternalStorage(context, item.imageUri)
         loadedBitmap?.let {
             bitmap.value = it.asImageBitmap()
+        }
+    }
+
+    // Извлекаем FEN или PGN из ссылки
+    val extractedData = remember(item.lichessUrl) {
+        extractFenFromLichessUrl(item.lichessUrl) ?: extractPgnFromLichessUrl(item.lichessUrl)
+    }
+    val dataType = remember(item.lichessUrl) {
+        when {
+            extractFenFromLichessUrl(item.lichessUrl) != null -> "FEN"
+            extractPgnFromLichessUrl(item.lichessUrl) != null -> "PGN"
+            else -> "Ссылка"
+        }
+    }
+
+    // Эффект для скрытия успешного сообщения о копировании
+    LaunchedEffect(showCopySuccess) {
+        if (showCopySuccess) {
+            delay(2000)
+            showCopySuccess = false
         }
     }
 
@@ -107,15 +135,70 @@ fun HistoryItemCard(
                 Spacer(modifier = Modifier.height(8.dp))
             }
 
-            // Отображение ссылки
-            Text(
-                text = "Ссылка на партию:",
-                style = MaterialTheme.typography.labelMedium
-            )
-            Text(
-                text = item.lichessUrl,
-                style = MaterialTheme.typography.bodyMedium
-            )
+            // Заголовок с кнопкой копирования
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "$dataType:",
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.weight(1f)
+                )
+
+                IconButton(
+                    onClick = {
+                        copyToClipboard(
+                            context = context,
+                            text = extractedData ?: item.lichessUrl,
+                            label = dataType
+                        )
+                        showCopySuccess = true
+                    }
+                ) {
+                    if (showCopySuccess) {
+                        Icon(
+                            Icons.Default.Check,
+                            contentDescription = "Скопировано",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    } else {
+                        Icon(
+                            Icons.Default.Check,
+                            contentDescription = "Копировать $dataType"
+                        )
+                    }
+                }
+            }
+
+            // Отображение извлеченных данных или ссылки с возможностью выделения
+            SelectionContainer {
+                Text(
+                    text = extractedData ?: item.lichessUrl,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                        .clickable {
+                            copyToClipboard(
+                                context = context,
+                                text = extractedData ?: item.lichessUrl,
+                                label = dataType
+                            )
+                            showCopySuccess = true
+                        }
+                )
+            }
+
+            // Сообщение об успешном копировании
+            if (showCopySuccess) {
+                Text(
+                    text = "$dataType скопирован в буфер обмена!",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
 
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -144,5 +227,47 @@ fun HistoryItemCard(
                 }
             }
         }
+    }
+}
+
+// Функция для копирования текста в буфер обмена
+fun copyToClipboard(context: android.content.Context, text: String, label: String) {
+    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as ClipboardManager
+    val clip = ClipData.newPlainText(label, text)
+    clipboard.setPrimaryClip(clip)
+}
+
+// Функция для извлечения FEN из ссылки lichess
+fun extractFenFromLichessUrl(url: String): String? {
+    return try {
+        // Для ссылок вида: https://lichess.org/editor/rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBqKBNR_w_KQkq_-_0_1?color=white
+        val pattern = Regex("lichess\\.org/editor/([^?]+)")
+        val match = pattern.find(url)
+        match?.groups?.get(1)?.value?.replace('_', ' ')
+    } catch (e: Exception) {
+        null
+    }
+}
+
+// Функция для извлечения PGN из ссылки lichess
+fun extractPgnFromLichessUrl(url: String): String? {
+    return try {
+       if (url.contains("lichess.org/paste") && url.contains("pgn=")) {
+            val pgnParam = url.substringAfter("pgn=").substringBefore("&")
+            URLDecoder.decode(pgnParam, "UTF-8")
+        } else if (url.contains("lichess.org/analysis/pgn/")) {
+            // Старый формат для обратной совместимости
+            val pattern = Regex("lichess\\.org/analysis/pgn/(.+)")
+            val match = pattern.find(url)
+            match?.groups?.get(1)?.value?.let { encodedPgn ->
+                URLDecoder.decode(encodedPgn, "UTF-8")
+                    .replace("_", " ")
+                    .replace("+", " ")
+            }
+        } else {
+            null
+        }
+    } catch (e: Exception) {
+        null
     }
 }
