@@ -1,33 +1,35 @@
 package com.example.chesspiecesrecognition
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import android.graphics.BitmapFactory
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import java.io.File
-import android.content.ClipData
-import android.content.ClipboardManager
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.runtime.*
 import kotlinx.coroutines.delay
 import java.net.URLDecoder
 
@@ -39,6 +41,11 @@ fun HistoryScreen(
     viewModel: HistoryViewModel = viewModel()
 ) {
     val historyItems by viewModel.historyItems.observeAsState(emptyList())
+    val lazyListState = rememberLazyListState()
+    val density = LocalDensity.current
+
+    // Состояние для хранения высоты кнопки
+    var buttonHeight by remember { mutableStateOf(0.dp) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
@@ -50,30 +57,98 @@ fun HistoryScreen(
             }
         )
 
-        LazyColumn(
+        Box(modifier = Modifier.weight(1f)) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                state = lazyListState
+            ) {
+                items(historyItems) { item ->
+                    HistoryItemCard(
+                        item = item,
+                        onItemClick = onItemClick,
+                        onDelete = { viewModel.deleteHistoryItem(item.id, item.imageUri) }
+                    )
+                }
+            }
+
+            // Простой и отзывчивый скроллбар
+            SimpleScrollbar(
+                lazyListState = lazyListState,
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 2.dp),
+                bottomPadding = buttonHeight // Передаем высоту кнопки
+            )
+        }
+
+        // Кнопка возврата в главное меню с измерением высоты
+        Box(
             modifier = Modifier
-                .weight(1f) // важно: чтобы список не вытеснял кнопку вниз
-                .fillMaxWidth()
+                .onSizeChanged { size ->
+                    buttonHeight = with(density) { size.height.toDp() }
+                }
         ) {
-            items(historyItems) { item ->
-                HistoryItemCard(
-                    item = item,
-                    onItemClick = onItemClick,
-                    onDelete = { viewModel.deleteHistoryItem(item.id, item.imageUri) }
-                )
+            Button(
+                onClick = onBack,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                Icon(Icons.Default.ArrowBack, contentDescription = "Назад")
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Вернуться на главный экран")
+            }
+        }
+    }
+}
+@Composable
+fun SimpleScrollbar(
+    lazyListState: androidx.compose.foundation.lazy.LazyListState,
+    modifier: Modifier = Modifier,
+    bottomPadding: Dp = 0.dp // Высота нижних элементов (кнопки)
+) {
+    val layoutInfo = lazyListState.layoutInfo
+    val totalItems = layoutInfo.totalItemsCount
+    val configuration = LocalConfiguration.current
+    val density = LocalDensity.current
+
+    if (totalItems > 5) {
+        // Высота видимой области (исключая нижнюю кнопку)
+        val availableHeightPx = with(density) {
+            (configuration.screenHeightDp.dp - bottomPadding).toPx()
+        }
+
+        // Фиксированная высота ползунка
+        val fixedThumbHeight = 40.dp
+        val thumbHeightPx = with(density) { fixedThumbHeight.toPx() }
+
+        // Рассчитываем позицию ползунка
+        val thumbPosition = remember(lazyListState.firstVisibleItemIndex) {
+            if (totalItems > 0 && availableHeightPx > 0) {
+                val firstVisible = lazyListState.firstVisibleItemIndex
+                val rawPosition = firstVisible.toFloat() / totalItems * availableHeightPx
+
+                // Ограничиваем позицию, чтобы ползунок не выходил за доступную область
+                val maxPosition = availableHeightPx - thumbHeightPx
+                rawPosition.coerceIn(0f, maxPosition)
+            } else {
+                0f
             }
         }
 
-        // Кнопка возврата в главное меню
-        Button(
-            onClick = onBack,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
+        Box(
+            modifier = modifier
+                .width(6.dp)
+                .fillMaxHeight()
         ) {
-            Icon(Icons.Default.ArrowBack, contentDescription = "Назад")
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("Вернуться на главный экран")
+            Box(
+                modifier = Modifier
+                    .width(6.dp)
+                    .height(fixedThumbHeight)
+                    .offset(y = with(density) { thumbPosition.toDp() })
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(Color.Gray.copy(alpha = 0.7f))
+            )
         }
     }
 }
@@ -252,7 +327,7 @@ fun extractFenFromLichessUrl(url: String): String? {
 // Функция для извлечения PGN из ссылки lichess
 fun extractPgnFromLichessUrl(url: String): String? {
     return try {
-       if (url.contains("lichess.org/paste") && url.contains("pgn=")) {
+        if (url.contains("lichess.org/paste") && url.contains("pgn=")) {
             val pgnParam = url.substringAfter("pgn=").substringBefore("&")
             URLDecoder.decode(pgnParam, "UTF-8")
         } else if (url.contains("lichess.org/analysis/pgn/")) {
