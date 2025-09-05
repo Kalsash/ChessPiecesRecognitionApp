@@ -2,6 +2,8 @@ package com.example.chesspiecesrecognition
 
 import android.content.ClipData
 import android.content.ClipboardManager
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -105,54 +107,72 @@ fun HistoryScreen(
 fun SimpleScrollbar(
     lazyListState: androidx.compose.foundation.lazy.LazyListState,
     modifier: Modifier = Modifier,
-    bottomPadding: Dp = 0.dp // Высота нижних элементов (кнопки)
+    bottomPadding: Dp = 0.dp
 ) {
     val layoutInfo = lazyListState.layoutInfo
     val totalItems = layoutInfo.totalItemsCount
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
 
-    if (totalItems > 5) {
-        // Высота видимой области (исключая нижнюю кнопку)
-        val availableHeightPx = with(density) {
+    if (totalItems <= 0) {
+        return
+    }
+
+    // Фиксируем количество видимых элементов при первом вычислении
+    val initialVisibleItems = remember { layoutInfo.visibleItemsInfo.size }
+
+    // Высота видимой области (вычисляется один раз)
+    val availableHeightPx = remember(totalItems, bottomPadding) {
+        with(density) {
             (configuration.screenHeightDp.dp - bottomPadding).toPx()
         }
+    }
 
-        // Фиксированная высота ползунка
-        val fixedThumbHeight = 40.dp
-        val thumbHeightPx = with(density) { fixedThumbHeight.toPx() }
+    // Вычисляем высоту ползунка (один раз, используя initialVisibleItems)
+    val thumbHeightPx = remember(totalItems, initialVisibleItems, availableHeightPx) {
+        val thumbHeightRatio = initialVisibleItems.toFloat() / totalItems.toFloat()
+        val calculatedHeight = availableHeightPx * thumbHeightRatio
+        val minThumbHeight = with(density) { 40.dp.toPx() }
+        calculatedHeight.coerceAtLeast(minThumbHeight)
+    }
 
-        // Рассчитываем позицию ползунка
-        val thumbPosition = remember(lazyListState.firstVisibleItemIndex) {
-            if (totalItems > 0 && availableHeightPx > 0) {
+    val thumbHeight = with(density) { thumbHeightPx.toDp() }
+
+    // Только позиция реагирует на скролл
+    val targetPosition by remember(lazyListState.firstVisibleItemIndex, totalItems, initialVisibleItems) {
+        derivedStateOf {
+            with(density) {
                 val firstVisible = lazyListState.firstVisibleItemIndex
-                val rawPosition = firstVisible.toFloat() / totalItems * availableHeightPx
-
-                // Ограничиваем позицию, чтобы ползунок не выходил за доступную область
-                val maxPosition = availableHeightPx - thumbHeightPx
-                rawPosition.coerceIn(0f, maxPosition)
-            } else {
-                0f
+                val totalScrollRange = (totalItems - initialVisibleItems).coerceAtLeast(1)
+                val scrollProgress = firstVisible.toFloat() / totalScrollRange
+                val rawPosition = scrollProgress * (availableHeightPx - thumbHeightPx)
+                rawPosition.coerceIn(0f, availableHeightPx - thumbHeightPx).toDp()
             }
         }
+    }
 
+    // Анимированная позиция ползунка
+    val thumbPosition by animateDpAsState(
+        targetValue = targetPosition,
+        animationSpec = tween(durationMillis = 150),
+        label = "scrollbar_animation"
+    )
+
+    Box(
+        modifier = modifier
+            .width(8.dp)
+            .fillMaxHeight()
+    ) {
         Box(
-            modifier = modifier
-                .width(6.dp)
-                .fillMaxHeight()
-        ) {
-            Box(
-                modifier = Modifier
-                    .width(6.dp)
-                    .height(fixedThumbHeight)
-                    .offset(y = with(density) { thumbPosition.toDp() })
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(Color.Gray.copy(alpha = 0.7f))
-            )
-        }
+            modifier = Modifier
+                .width(8.dp)
+                .height(thumbHeight)
+                .offset(y = thumbPosition)
+                .clip(RoundedCornerShape(4.dp))
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.7f))
+        )
     }
 }
-
 @Composable
 fun HistoryItemCard(
     item: HistoryItem,
