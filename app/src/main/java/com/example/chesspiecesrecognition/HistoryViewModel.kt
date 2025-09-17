@@ -10,20 +10,20 @@ import kotlinx.coroutines.launch
 class HistoryViewModel(application: Application) : AndroidViewModel(application) {
     private val database = AppDatabase.getDatabase(application)
     private val historyDao = database.historyDao()
+    private val repository: HistoryRepository = HistoryRepositoryImpl(historyDao)
 
-    val historyItems: LiveData<List<HistoryItem>> = historyDao.getAllHistoryItems()
+    val historyItems: LiveData<List<HistoryItem>> = repository.getAllHistoryItems()
 
     fun addHistoryItem(imageUri: String, lichessUrl: String) {
         viewModelScope.launch {
-            historyDao.insert(HistoryItem(imageUri = imageUri, lichessUrl = lichessUrl))
+            repository.insert(HistoryItem(imageUri = imageUri, lichessUrl = lichessUrl))
         }
     }
 
     fun deleteHistoryItem(id: Long, imagePath: String) {
         viewModelScope.launch {
-            historyDao.deleteHistoryItem(id)
+            repository.deleteHistoryItem(id)
             FileUtils.deleteImageFile(imagePath)
         }
     }
-
 }

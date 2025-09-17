@@ -15,6 +15,9 @@ interface HistoryDao {
     @Query("SELECT * FROM history_items ORDER BY timestamp DESC")
     fun getAllHistoryItems(): LiveData<List<HistoryItem>>
 
+    @Query("SELECT * FROM history_items WHERE id = :id")
+    suspend fun getHistoryItemById(id: Long): HistoryItem?
+
     @Query("DELETE FROM history_items WHERE id = :id")
     suspend fun deleteHistoryItem(id: Long): Int
 }
