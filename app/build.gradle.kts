@@ -76,6 +76,13 @@ dependencies {
     implementation("androidx.compose.runtime:runtime-livedata:1.6.3")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.1")
 
+    // TensorFlow Lite
+    //implementation("org.tensorflow:tensorflow-lite:2.14.0")
+    //implementation("org.tensorflow:tensorflow-lite-gpu:2.14.0")
+
+    // Дополнительные зависимости для обработки изображений
+    implementation("androidx.exifinterface:exifinterface:1.3.6")
+
 
 
     implementation("com.github.yalantis:ucrop:2.2.6")

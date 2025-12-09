@@ -1,3 +1,7 @@
+package com.example.chesspiecesrecognition.views
+
+import ActionButton
+import ChessboardBackground
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -12,21 +16,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Text
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -47,10 +44,11 @@ fun MainScreen(
     croppedImageUri: Uri?,
     isLoading: Boolean,
     onRecognizeImage: (Uri) -> Unit,
+    onRecognize3D: (Uri) -> Unit,
     onShowHistory: () -> Unit,
     onProcessVideo: (Uri) -> Unit,
     onShowAbout: () -> Unit,
-    onFenEditor: () -> Unit, // Добавляем новый параметр
+    onFenEditor: () -> Unit,
     viewModel: HistoryViewModel
 ) {
     val context = LocalContext.current
@@ -61,6 +59,14 @@ fun MainScreen(
     ) { uri: Uri? ->
         if (uri != null) {
             onRecognizeImage(uri)
+        }
+    }
+
+    val image3DLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            onRecognize3D(uri)
         }
     }
 
@@ -98,7 +104,7 @@ fun MainScreen(
                     .fillMaxWidth()
                     .background(Color.Black.copy(alpha = 0.5f), shape = RoundedCornerShape(8.dp))
                     .padding(8.dp),
-                contentAlignment = Alignment.Center // Добавлено центрирование содержимого Box
+                contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = "♔ Chess Pieces Recognition ♔",
@@ -106,8 +112,8 @@ fun MainScreen(
                     fontSize = 28.sp,
                     fontWeight = FontWeight.Bold,
                     style = TextStyle(shadow = Shadow(color = Color.Black, blurRadius = 4f)),
-                    textAlign = TextAlign.Center, // Добавлено центрирование текста
-                    modifier = Modifier.fillMaxWidth() // Чтобы текст занимал всю ширину для центрирования
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
 
@@ -128,35 +134,43 @@ fun MainScreen(
 
                 ActionButton(
                     text = "Распознать фигуры по фото",
-                    icon = Icons.Default.Search
+                    icon = Icons.Default.Search,
+
                 ) {
                     imageLauncher.launch("image/*")
                 }
 
                 ActionButton(
+                    text = "3D Распознавание шахмат",
+                    icon = Icons.Default.Search,
+                ) {
+                    image3DLauncher.launch("image/*")
+                }
+
+                ActionButton(
                     text = "Извлечь шахматную партию из видео",
-                    icon = Icons.Default.PlayArrow
+                    icon = Icons.Default.PlayArrow,
                 ) {
                     videoLauncher.launch("video/*")
                 }
 
                 ActionButton(
                     text = "FEN-редактор",
-                    icon = Icons.Default.Edit
+                    icon = Icons.Default.Edit,
                 ) {
                     onFenEditor()
                 }
 
                 ActionButton(
                     text = "История распознаваний",
-                    icon = Icons.Default.List
+                    icon = Icons.Default.List,
                 ) {
                     onShowHistory()
                 }
 
                 ActionButton(
                     text = "О приложении",
-                    icon = Icons.Default.Info
+                    icon = Icons.Default.Info,
                 ) {
                     onShowAbout()
                 }
