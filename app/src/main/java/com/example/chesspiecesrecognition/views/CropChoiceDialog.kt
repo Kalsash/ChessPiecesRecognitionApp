@@ -30,6 +30,7 @@ fun CropChoiceDialog(
     sharedPreferences: android.content.SharedPreferences,
     onAutoCropSelected: () -> Unit,
     onManualCropSelected: () -> Unit,
+    onNoCropSelected: () -> Unit,
     onCancel: () -> Unit
 ) {
     // Используем remember для сохранения состояния внутри Composable
@@ -63,7 +64,7 @@ fun CropChoiceDialog(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Text(
-                    text = "Как вы хотите обрезать шахматную доску?",
+                    text = "Как вы хотите обработать изображение?",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -109,7 +110,7 @@ fun CropChoiceDialog(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 16.dp),
+                        .padding(bottom = 8.dp),
                     onClick = {
                         if (rememberCropChoice) {
                             sharedPreferences.edit()
@@ -134,6 +135,41 @@ fun CropChoiceDialog(
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = "Сразу открыть редактор обрезки без автоматического поиска",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // Опция 3: Без обрезки
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp),
+                    onClick = {
+                        if (rememberCropChoice) {
+                            sharedPreferences.edit()
+                                .putString("user_crop_choice", "no_crop")
+                                .apply()
+                            userCropChoice = "no_crop"
+                        }
+                        onNoCropSelected()
+                    },
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        Text(
+                            text = "Без обрезки",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Распознавание на исходном изображении без предварительной обрезки",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

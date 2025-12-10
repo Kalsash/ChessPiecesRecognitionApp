@@ -4,11 +4,17 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.RectF
+import android.util.Log
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,8 +31,14 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -147,6 +159,7 @@ class ImageCropper(private val context: Context) {
         )
     }
 
+    // Упрощенная функция без MaterialTheme
     fun getDrawCropRectLambda(
         cornerSizePx: Float,
         rectStrokeWidthPx: Float,
@@ -396,23 +409,293 @@ class ImageCropper(private val context: Context) {
 
         return Pair(Offset(offsetX, offsetY), Size(scaledWidth, scaledHeight))
     }
+
+    // Установка прямоугольника обрезки на основе детекции шахматной доски
+    fun setCropRectFromDetection(detectionRect: RectF) {
+        // Добавляем небольшой запас по краям (5%)
+        val margin = 0.05f
+        val width = detectionRect.width()
+        val height = detectionRect.height()
+
+        cropRect = RectF(
+            (detectionRect.left - width * margin).coerceIn(0f, 1f),
+            (detectionRect.top - height * margin).coerceIn(0f, 1f),
+            (detectionRect.right + width * margin).coerceIn(0f, 1f),
+            (detectionRect.bottom + height * margin).coerceIn(0f, 1f)
+        )
+
+        // Обновляем предпросмотр
+        currentBitmap?.let { updatePreview(it) }
+    }
+}
+
+// Вынесите эти композиции за пределы основной функции
+@Composable
+fun AutoCropProgressDialog(
+    isVisible: Boolean,
+    progressText: String = "Автоматический поиск шахматной доски..."
+) {
+    if (isVisible) {
+        Dialog(
+            onDismissRequest = { }
+        ) {
+            Card(
+                modifier = Modifier
+                    .width(280.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                    modifier = Modifier
+                        .padding(24.dp)
+                ) {
+                    // Анимированный спиннер
+                    CircularProgressIndicator(
+                        color = MaterialTheme.colorScheme.primary,
+                        strokeWidth = 3.dp,
+                        modifier = Modifier.size(48.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    Text(
+                        text = "Поиск шахматной доски",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = progressText,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+
+                    // Анимация точек для ожидания
+                    AnimatedProgressDots()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AnimatedProgressDots() {
+    var dotState by remember { mutableStateOf(0) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(500)
+            dotState = (dotState + 1) % 4
+        }
+    }
+
+    Row(
+        modifier = Modifier.padding(top = 8.dp),
+        horizontalArrangement = Arrangement.Center
+    ) {
+        Text(
+            text = ".".repeat(dotState),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.primary
+        )
+    }
+}
+
+@Composable
+fun InfiniteRotationSpinner(modifier: Modifier = Modifier) {
+    val infiniteTransition = rememberInfiniteTransition()
+    val rotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        )
+    )
+
+    Canvas(modifier = modifier.size(80.dp)) {
+        drawCircle(
+            color = Color.Blue.copy(alpha = 0.3f), // Заменили MaterialTheme на фиксированный цвет
+            radius = size.minDimension / 2
+        )
+
+        drawArc(
+            color = Color.Blue, // Заменили MaterialTheme на фиксированный цвет
+            startAngle = rotation,
+            sweepAngle = 90f,
+            useCenter = false,
+            style = Stroke(width = 8.dp.toPx())
+        )
+    }
+}
+
+@Composable
+fun FullScreenLoading(
+    isVisible: Boolean,
+    message: String = "Поиск шахматной доски"
+) {
+    if (isVisible) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.White.copy(alpha = 0.95f)), // Заменили MaterialTheme на фиксированный цвет
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                // Кастомный спиннер с анимацией
+                InfiniteRotationSpinner()
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = Color.Black // Заменили MaterialTheme на фиксированный цвет
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Прогресс бар с неопределенным прогрессом
+                LinearProgressIndicator(
+                    modifier = Modifier.width(200.dp),
+                    color = Color.Blue // Заменили MaterialTheme на фиксированный цвет
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = "Это может занять несколько секунд",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.Gray, // Заменили MaterialTheme на фиксированный цвет
+                    fontSize = 14.sp
+                )
+            }
+        }
+    }
 }
 
 @Composable
 fun ImageCropperScreen(
     imageCropper: ImageCropper,
+    chessboardDetector: ChessboardDetector? = null,
     onCropConfirmed: (Boolean) -> Unit,
     onCancel: () -> Unit
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
+    val colorScheme = MaterialTheme.colorScheme
+
     var showPreview by remember { mutableStateOf(false) }
     var isBlackPlayer by remember { mutableStateOf(false) }
+    var isAutoDetecting by remember { mutableStateOf(false) }
+    var autoDetectSuccess by remember { mutableStateOf(false) }
+    var showAutoDetectError by remember { mutableStateOf(false) }
+    var detectionMessage by remember { mutableStateOf("Анализируем изображение...") }
 
     val cornerSizePx = with(density) { 20.dp.toPx() }
     val dragCornerSizePx = with(density) { 40.dp.toPx() }
     val rectStrokeWidthPx = with(density) { 2.dp.toPx() }
     val cornerStrokeWidthPx = with(density) { 3.dp.toPx() }
+
+    // Отображаем индикатор загрузки при автоматической детекции
+    if (isAutoDetecting) {
+        AutoCropProgressDialog(
+            isVisible = isAutoDetecting,
+            progressText = detectionMessage
+        )
+    }
+
+    // Запускаем автоматическую детекцию при каждом изменении изображения
+    LaunchedEffect(imageCropper.currentBitmap) {
+        if (chessboardDetector != null &&
+            imageCropper.currentBitmap != null &&
+            !autoDetectSuccess &&
+            !showPreview &&
+            !isAutoDetecting
+        ) {
+            isAutoDetecting = true
+            detectionMessage = "Загружаем изображение..."
+
+            // Небольшая задержка для плавного отображения индикатора
+            delay(300)
+
+            try {
+                detectionMessage = "Анализируем изображение..."
+
+                // Запускаем детекцию в IO dispatcher
+                val detection = withContext(Dispatchers.IO) {
+                    chessboardDetector.detectChessboard(imageCropper.currentBitmap!!)
+                }
+
+                if (detection != null) {
+                    detectionMessage = "Настраиваем область обрезки..."
+
+                    // Преобразуем абсолютные координаты в относительные (0-1)
+                    val bitmap = imageCropper.currentBitmap!!
+                    val width = bitmap.width.toFloat()
+                    val height = bitmap.height.toFloat()
+
+                    val relativeRect = RectF(
+                        detection.boundingBox.left / width,
+                        detection.boundingBox.top / height,
+                        detection.boundingBox.right / width,
+                        detection.boundingBox.bottom / height
+                    )
+
+                    // Устанавливаем прямоугольник обрезки
+                    imageCropper.setCropRectFromDetection(relativeRect)
+                    autoDetectSuccess = true
+                    showAutoDetectError = false
+
+                    // Задержка перед скрытием индикатора
+                    delay(500)
+                } else {
+                    // Шахматная доска не найдена
+                    autoDetectSuccess = false
+                    showAutoDetectError = true
+                    detectionMessage = "Доска не найдена"
+
+                    // Показываем сообщение об ошибке
+                    scope.launch {
+                        delay(2000)
+                        showAutoDetectError = false
+                    }
+                }
+            } catch (e: Exception) {
+                // Ошибка при детекции
+                autoDetectSuccess = false
+                showAutoDetectError = true
+                detectionMessage = "Ошибка анализа"
+                Log.e("ImageCropperScreen", "Ошибка авто-детекции", e)
+
+                scope.launch {
+                    delay(2000)
+                    showAutoDetectError = false
+                }
+            } finally {
+                isAutoDetecting = false
+            }
+        }
+    }
+
+    // Сбрасываем статус авто-детекции при переключении на предпросмотр и обратно
+    LaunchedEffect(showPreview) {
+        if (!showPreview) {
+            autoDetectSuccess = false
+            showAutoDetectError = false
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -420,6 +703,37 @@ fun ImageCropperScreen(
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // Показываем сообщение об ошибке обнаружения
+        if (showAutoDetectError) {
+            Card(
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = colorScheme.errorContainer
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Warning,
+                        contentDescription = "Warning",
+                        tint = colorScheme.error,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = "Шахматная доска не найдена\nНастройте область вручную",
+                        color = colorScheme.onErrorContainer,
+                        fontSize = 14.sp
+                    )
+                }
+            }
+        }
+
         Text(
             text = if (showPreview) "Предпросмотр обрезки" else "Настройте область обрезки для видео",
             style = MaterialTheme.typography.titleMedium,
@@ -496,8 +810,8 @@ fun ImageCropperScreen(
                                 cornerSizePx,
                                 rectStrokeWidthPx,
                                 cornerStrokeWidthPx,
-                                rectColor = Color.Red,
-                                cornerColor = Color.Blue,
+                                rectColor = if (autoDetectSuccess) Color.Green else Color.Red,
+                                cornerColor = if (autoDetectSuccess) Color.Green else Color.Blue,
                                 gridColor = Color.White.copy(alpha = 0.7f),
                                 darkCellColor = Color.Black.copy(alpha = 0.15f)
                             )()
@@ -557,7 +871,7 @@ fun ImageCropperScreen(
                 }
             }
 
-            // Кнопка "Игрок играет черными фигурами" перемещена вниз
+            // Кнопка "Игрок играет черными фигурами"
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -574,17 +888,22 @@ fun ImageCropperScreen(
                 )
             }
 
-            // Кнопка "Сбросить все" сделана меньше
+            // Кнопка "Сбросить все"
             Button(
-                onClick = { imageCropper.resetTransform() },
+                onClick = {
+                    imageCropper.resetTransform()
+                    imageCropper.cropRect = RectF(0.15f, 0.15f, 0.85f, 0.85f)
+                    autoDetectSuccess = false
+                    showAutoDetectError = false
+                },
                 modifier = Modifier
                     .padding(bottom = 16.dp)
-                    .height(36.dp), // Уменьшаем высоту кнопки
+                    .height(36.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.secondary
+                    containerColor = colorScheme.secondary
                 )
             ) {
-                Text("Сбросить все", fontSize = 14.sp) // Уменьшаем размер текста
+                Text("Сбросить все", fontSize = 14.sp)
             }
         }
 
@@ -598,7 +917,7 @@ fun ImageCropperScreen(
                 Button(
                     onClick = { showPreview = false },
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.secondary
+                        containerColor = colorScheme.secondary
                     )
                 ) {
                     Text("Назад к настройке")
@@ -607,7 +926,7 @@ fun ImageCropperScreen(
                 Button(
                     onClick = onCancel,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error
+                        containerColor = colorScheme.error
                     )
                 ) {
                     Text("Отмена")
@@ -632,7 +951,8 @@ fun ImageCropperScreen(
                             imageCropper.croppedBitmap = imageCropper.autoCrop(bitmap)
                             showPreview = true
                         }
-                    }
+                    },
+                    enabled = !isAutoDetecting
                 ) {
                     Text("Предпросмотр")
                 }

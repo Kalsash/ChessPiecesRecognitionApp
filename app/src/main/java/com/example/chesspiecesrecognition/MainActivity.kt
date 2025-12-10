@@ -51,6 +51,8 @@ class MainActivity : ComponentActivity() {
     private var isLoading3D by mutableStateOf(false)  // ТОЛЬКО для 3D распознавания
     private var showCropChoiceDialog by mutableStateOf(false)
     private var pendingImageUri by mutableStateOf<Uri?>(null)
+    private var is3DRecognitionPending by mutableStateOf(false)
+    private var pending3DUri by mutableStateOf<Uri?>(null)
 
     // SharedPreferences для хранения настроек
     private val sharedPreferences by lazy {
@@ -74,8 +76,8 @@ class MainActivity : ComponentActivity() {
             var showHistory by remember { mutableStateOf(false) }
             var showAbout by remember { mutableStateOf(false) }
             var showFenEditor by remember { mutableStateOf(false) }
-            var showVideoTrimmer by remember { mutableStateOf(false) }
-            var showVideoCropper by remember { mutableStateOf(false) }
+            var showVideoTrimmer by remember { mutableStateOf(false) } // ✅ ИСПРАВЛЕНО
+            var showVideoCropper by remember { mutableStateOf(false) } // ✅ ИСПРАВЛЕНО
             var videoToProcess by remember { mutableStateOf<Uri?>(null) }
             var videoStartTime by remember { mutableStateOf(0L) }
             var videoEndTime by remember { mutableStateOf(0L) }
@@ -94,20 +96,40 @@ class MainActivity : ComponentActivity() {
                     onAutoCropSelected = {
                         showCropChoiceDialog = false
                         pendingImageUri?.let { uri ->
-                            startAutoCropThenManual(uri)
+                            if (is3DRecognitionPending) {
+                                startAutoCropThenManual3D(uri)
+                            } else {
+                                startAutoCropThenManual(uri)
+                            }
                         }
                         pendingImageUri = null
                     },
                     onManualCropSelected = {
                         showCropChoiceDialog = false
                         pendingImageUri?.let { uri ->
-                            startManualCrop(uri, null)
+                            if (is3DRecognitionPending) {
+                                startManualCrop3D(uri, null)
+                            } else {
+                                startManualCrop(uri, null)
+                            }
+                        }
+                        pendingImageUri = null
+                    },
+                    onNoCropSelected = {
+                        showCropChoiceDialog = false
+                        pendingImageUri?.let { uri ->
+                            if (is3DRecognitionPending) {
+                                process3DRecognition(uri, lifecycleScope)
+                            } else {
+                                processNoCropRecognition(uri)
+                            }
                         }
                         pendingImageUri = null
                     },
                     onCancel = {
                         showCropChoiceDialog = false
                         pendingImageUri = null
+                        is3DRecognitionPending = false
                     }
                 )
             }
@@ -209,6 +231,7 @@ class MainActivity : ComponentActivity() {
                     imageCropper.currentBitmap?.let { it ->
                         ImageCropperScreen(
                             imageCropper = imageCropper,
+                            chessboardDetector = chessboardDetector,
                             onCropConfirmed = { isBlackPlayer ->
                                 showVideoCropper = false
                                 videoToProcess?.let { uri ->
@@ -250,11 +273,14 @@ class MainActivity : ComponentActivity() {
                             val rememberChoice = sharedPreferences.getBoolean("remember_crop_choice", false)
                             val userChoice = sharedPreferences.getString("user_crop_choice", "")
 
+                            is3DRecognitionPending = false // Это 2D распознавание
+
                             if (rememberChoice && userChoice?.isNotEmpty() == true) {
                                 // НЕ устанавливаем isLoading - для 2D не нужен индикатор
                                 when (userChoice) {
                                     "auto" -> startAutoCropThenManual(uri)
                                     "manual" -> startManualCrop(uri, null)
+                                    "no_crop" -> processNoCropRecognition(uri)
                                 }
                             } else {
                                 pendingImageUri = uri
@@ -263,8 +289,22 @@ class MainActivity : ComponentActivity() {
                             }
                         },
                         onRecognize3D = { uri ->
-                            // Автоматически обрабатываем и открываем результат
-                            process3DRecognition(uri, coroutineScope)
+                            // Сначала показываем диалог обрезки для 3D
+                            val rememberChoice = sharedPreferences.getBoolean("remember_crop_choice", false)
+                            val userChoice = sharedPreferences.getString("user_crop_choice", "")
+
+                            is3DRecognitionPending = true // Это 3D распознавание
+
+                            if (rememberChoice && userChoice?.isNotEmpty() == true) {
+                                when (userChoice) {
+                                    "auto" -> startAutoCropThenManual3D(uri)
+                                    "manual" -> startManualCrop3D(uri, null)
+                                    "no_crop" -> process3DRecognition(uri, lifecycleScope)
+                                }
+                            } else {
+                                pendingImageUri = uri
+                                showCropChoiceDialog = true
+                            }
                         },
                         onShowHistory = { showHistory = true },
                         onShowAbout = { showAbout = true },
@@ -301,6 +341,7 @@ class MainActivity : ComponentActivity() {
 
                     runOnUiThread {
                         isLoading3D = false  // сбрасываем 3D загрузку
+                        is3DRecognitionPending = false // Сбрасываем флаг
 
                         if (result.success) {
                             val url = chess3DRecognizer!!.getLichessUrl(result.fen)
@@ -340,6 +381,7 @@ class MainActivity : ComponentActivity() {
                 } else {
                     runOnUiThread {
                         isLoading3D = false  // сбрасываем 3D загрузку
+                        is3DRecognitionPending = false // Сбрасываем флаг
                         Toast.makeText(
                             this@MainActivity,
                             "Не удалось загрузить изображение",
@@ -351,11 +393,39 @@ class MainActivity : ComponentActivity() {
                 Log.e("MainActivity", "3D Recognition error", e)
                 runOnUiThread {
                     isLoading3D = false  // сбрасываем 3D загрузку
+                    is3DRecognitionPending = false // Сбрасываем флаг
                     Toast.makeText(
                         this@MainActivity,
                         "Ошибка обработки: ${e.message}",
                         Toast.LENGTH_LONG
                     ).show()
+                }
+            }
+        }
+    }
+
+    private fun processNoCropRecognition(uri: Uri) {
+        // НЕ устанавливаем isLoading - для 2D не нужен индикатор
+
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                Log.d("NoCrop", "Начинаем распознавание без обрезки: $uri")
+
+                val bitmap = loadBitmapFromUri(uri)
+                if (bitmap != null) {
+                    runOnUiThread {
+                        croppedImageUri = uri
+                        recognizeFromImage(this@MainActivity, tfLiteInterpreter, uri, historyViewModel)
+                    }
+                } else {
+                    runOnUiThread {
+                        showToast("Не удалось загрузить изображение")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("NoCrop", "Ошибка при распознавании без обрезки", e)
+                runOnUiThread {
+                    showToast("Ошибка при обработке изображения")
                 }
             }
         }
@@ -412,11 +482,82 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun startAutoCropThenManual3D(sourceUri: Uri) {
+        // НЕ устанавливаем isLoading - для 2D не нужен индикатор
+
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                Log.d("AutoCrop3D", "Начинаем авто-обрезку для 3D распознавания: $sourceUri")
+
+                val bitmap = loadBitmapFromUri(sourceUri) ?: run {
+                    runOnUiThread {
+                        Log.e("AutoCrop3D", "Не удалось загрузить изображение")
+                        showToast("Не удалось загрузить изображение")
+                        startManualCrop3D(sourceUri, null)
+                    }
+                    return@launch
+                }
+
+                Log.d("AutoCrop3D", "Изображение загружено: ${bitmap.width}x${bitmap.height}")
+
+                val detection = chessboardDetector.detectChessboard(bitmap)
+
+                runOnUiThread {
+                    if (detection != null && detection.confidence > 0.5f) {
+                        Log.d("AutoCrop3D", "Шахматная доска найдена: confidence=${detection.confidence}, rect=${detection.boundingBox}")
+
+                        val croppedBitmap = chessboardDetector.cropChessboard(bitmap, detection)
+                        val file = saveBitmapToCache(croppedBitmap, "auto_cropped_3d_${System.currentTimeMillis()}.jpg")
+
+                        if (file != null && file.exists()) {
+                            val croppedUri = Uri.fromFile(file)
+                            startManualCrop3D(croppedUri, croppedBitmap)
+                        } else {
+                            Log.e("AutoCrop3D", "Не удалось сохранить обрезанное изображение")
+                            showToast("Ошибка при сохранении")
+                            startManualCrop3D(sourceUri, null)
+                        }
+                    } else {
+                        Log.d("AutoCrop3D", "Шахматная доска не найдена или уверенность слишком низкая")
+                        showToast("Шахматная доска не найдена, используйте ручную обрезку")
+                        startManualCrop3D(sourceUri, null)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("AutoCrop3D", "Ошибка при автоматической обрезке", e)
+                runOnUiThread {
+                    showToast("Ошибка при обработке изображения")
+                    startManualCrop3D(sourceUri, null)
+                }
+            }
+        }
+    }
+
     private fun startManualCrop(sourceUri: Uri, autoCroppedBitmap: Bitmap? = null) {
         // НЕ устанавливаем isLoading - для 2D не нужен индикатор
 
         if (sourceUri.scheme != null) {
             val destinationUri = Uri.fromFile(File(cacheDir, "final_cropped_${System.currentTimeMillis()}.jpg"))
+
+            autoCroppedBitmap?.let {
+                imageCropper.currentBitmap = it
+            }
+
+            UCrop.of(sourceUri, destinationUri)
+                .withAspectRatio(1f, 1f)
+                .withMaxResultSize(800, 800)
+                .start(this)
+        } else {
+            Log.e("UCrop", "Source URI is invalid")
+            showToast("Неверный URI изображения")
+        }
+    }
+
+    private fun startManualCrop3D(sourceUri: Uri, autoCroppedBitmap: Bitmap? = null) {
+        // НЕ устанавливаем isLoading - для 2D не нужен индикатор
+
+        if (sourceUri.scheme != null) {
+            val destinationUri = Uri.fromFile(File(cacheDir, "final_cropped_3d_${System.currentTimeMillis()}.jpg"))
 
             autoCroppedBitmap?.let {
                 imageCropper.currentBitmap = it
@@ -538,15 +679,23 @@ class MainActivity : ComponentActivity() {
         if (requestCode == UCrop.REQUEST_CROP && resultCode == RESULT_OK) {
             val resultUri = UCrop.getOutput(data!!)
             if (resultUri != null) {
-                croppedImageUri = resultUri
-                croppedImageUri?.let {
-                    recognizeFromImage(this, tfLiteInterpreter, it, historyViewModel)
+                // Проверяем, для какого типа распознавания предназначена обрезка
+                if (is3DRecognitionPending) {
+                    // Для 3D распознавания
+                    process3DRecognition(resultUri, lifecycleScope)
+                } else {
+                    // Для обычного 2D распознавания
+                    croppedImageUri = resultUri
+                    croppedImageUri?.let {
+                        recognizeFromImage(this, tfLiteInterpreter, it, historyViewModel)
+                    }
                 }
             }
         } else if (resultCode == UCrop.RESULT_ERROR) {
             val cropError = UCrop.getError(data!!)
             cropError?.printStackTrace()
             showToast("Ошибка при обрезке: ${cropError?.message}")
+            is3DRecognitionPending = false // Сбрасываем флаг при ошибке
         }
     }
 
