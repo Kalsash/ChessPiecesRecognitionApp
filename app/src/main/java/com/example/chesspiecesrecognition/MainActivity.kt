@@ -26,6 +26,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.chesspiecesrecognition.views.CropChoiceDialog
+import com.example.chesspiecesrecognition.views.ImageCropperScreen
 import com.example.chesspiecesrecognition.views.MainScreen
 import com.yalantis.ucrop.UCrop
 import kotlinx.coroutines.CoroutineScope

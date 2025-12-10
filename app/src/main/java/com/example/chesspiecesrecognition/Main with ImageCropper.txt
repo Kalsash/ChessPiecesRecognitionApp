@@ -1,0 +1,505 @@
+package com.example.chesspiecesrecognition
+
+import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.media.MediaMetadataRetriever
+import android.net.Uri
+import android.os.Bundle
+import android.util.Log
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.lifecycleScope
+import com.example.chesspiecesrecognition.views.ImageCropperScreen
+import com.example.chesspiecesrecognition.views.MainScreen
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.tensorflow.lite.Interpreter
+import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
+import java.nio.channels.FileChannel
+
+class MainActivity : ComponentActivity() {
+    private lateinit var tfLiteInterpreter: Interpreter
+    private lateinit var chessboardDetector: ChessboardDetector
+    private var chess3DRecognizer: Chess3DRecognizer? = null
+    private lateinit var historyViewModel: HistoryViewModel
+    private val imageCropper by lazy { ImageCropper(this) }
+    private var currentFrame by mutableStateOf<Bitmap?>(null)
+    private var videoProcessor: VideoToPGNProcessor? = null
+    private var isLoading3D by mutableStateOf(false)
+
+    // Состояния для экранов
+    var showImageCropper by mutableStateOf(false)
+    var showVideoCropper by mutableStateOf(false)
+    var showVideoTrimmer by mutableStateOf(false)
+
+    // Данные для обработки
+    private var currentImageUri by mutableStateOf<Uri?>(null)
+    private var currentVideoUri by mutableStateOf<Uri?>(null)
+    private var is3DRecognitionRequested by mutableStateOf(false)
+    private var videoStartTime by mutableStateOf(0L)
+    private var videoEndTime by mutableStateOf(0L)
+    private var videoFrameIntervalMs by mutableStateOf(1000L)
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        loadModel()
+        chessboardDetector = ChessboardDetector(this)
+        historyViewModel = HistoryViewModel(application)
+
+        // Отключаем системные UI бары
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+
+        val controller = WindowInsetsControllerCompat(window, window.decorView)
+        controller.hide(WindowInsetsCompat.Type.navigationBars())
+        controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+
+        setContent {
+            var showHistory by remember { mutableStateOf(false) }
+            var showAbout by remember { mutableStateOf(false) }
+            var showFenEditor by remember { mutableStateOf(false) }
+            var isVideoProcessing by remember { mutableStateOf(false) }
+            var processingProgress by remember { mutableStateOf(0) }
+            var processingStatus by remember { mutableStateOf("") }
+
+            val coroutineScope = rememberCoroutineScope()
+            val context = LocalContext.current
+
+            // Собираем поток текущих кадров
+            LaunchedEffect(isVideoProcessing) {
+                if (isVideoProcessing) {
+                    videoProcessor?.currentFrame?.collectLatest { frame ->
+                        currentFrame = frame
+                    }
+                }
+            }
+
+            // Показываем индикатор загрузки ТОЛЬКО при 3D распознавании
+            if (isLoading3D) {
+                Dialog(
+                    onDismissRequest = { /* Нельзя закрыть */ }
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.5f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                            modifier = Modifier
+                                .padding(16.dp)
+                        ) {
+                            CircularProgressIndicator(color = Color.White)
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = "3D Распознавание шахматных фигур...",
+                                color = Color.White
+                            )
+                        }
+                    }
+                }
+            }
+
+            when {
+                isVideoProcessing -> {
+                    VideoProcessingScreen(
+                        progress = processingProgress,
+                        status = processingStatus,
+                        currentFrame = currentFrame,
+                        onCancel = {
+                            isVideoProcessing = false
+                            videoProcessor?.cancel()
+                            processingProgress = 0
+                            processingStatus = ""
+                            currentFrame = null
+                        }
+                    )
+                }
+                showImageCropper -> {
+                    currentImageUri?.let { uri ->
+                        ImageCropperScreen(
+                            imageCropper = imageCropper,
+                            chessboardDetector = chessboardDetector,
+                            onCropConfirmed = { isBlackPlayer ->
+                                showImageCropper = false
+                                // Сохраняем параметры обрезки
+                                imageCropper.saveCropParameters()
+
+                                // Запускаем распознавание
+                                if (is3DRecognitionRequested) {
+                                    process3DRecognitionFromCroppedImage()
+                                } else {
+                                    process2DRecognitionFromCroppedImage()
+                                }
+                            },
+                            onCancel = {
+                                showImageCropper = false
+                                currentImageUri = null
+                                is3DRecognitionRequested = false
+                            }
+                        )
+                    }
+                }
+                showVideoCropper -> {
+                    imageCropper.currentBitmap?.let {
+                        ImageCropperScreen(
+                            imageCropper = imageCropper,
+                            chessboardDetector = chessboardDetector,
+                            onCropConfirmed = { isBlackPlayer ->
+                                showVideoCropper = false
+                                imageCropper.saveCropParameters()
+
+                                // Запускаем обработку видео
+                                currentVideoUri?.let { uri ->
+                                    isVideoProcessing = true
+                                    processVideoWithProgress(
+                                        uri = uri,
+                                        startTime = videoStartTime,
+                                        endTime = videoEndTime,
+                                        frameIntervalMs = videoFrameIntervalMs,
+                                        isBlackPlayer = isBlackPlayer,
+                                        coroutineScope = coroutineScope,
+                                        onProgressUpdate = { progress, status ->
+                                            processingProgress = progress
+                                            processingStatus = status
+                                        },
+                                        onComplete = {
+                                            isVideoProcessing = false
+                                            processingProgress = 0
+                                            processingStatus = ""
+                                            currentFrame = null
+                                            currentVideoUri = null
+                                        }
+                                    )
+                                }
+                            },
+                            onCancel = {
+                                showVideoCropper = false
+                                currentVideoUri = null
+                                imageCropper.currentBitmap = null
+                            }
+                        )
+                    }
+                }
+                showVideoTrimmer -> {
+                    currentVideoUri?.let { uri ->
+                        VideoTrimmerScreen(
+                            videoUri = uri,
+                            onTrimConfirmed = { start, end, interval ->
+                                videoStartTime = start
+                                videoEndTime = end
+                                videoFrameIntervalMs = interval as Long
+                                showVideoTrimmer = false
+
+                                // Извлекаем первый кадр для настройки обрезки
+                                extractFirstFrame(uri, start)?.let { frame ->
+                                    imageCropper.currentBitmap = frame
+                                    showVideoCropper = true
+                                }
+                            },
+                            onCancel = {
+                                showVideoTrimmer = false
+                                currentVideoUri = null
+                            }
+                        )
+                    }
+                }
+                showHistory -> {
+                    HistoryScreen(
+                        onBack = { showHistory = false },
+                        onItemClick = { url ->
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                            startActivity(intent)
+                        },
+                        viewModel = historyViewModel
+                    )
+                }
+                showAbout -> {
+                    AboutScreen(
+                        onBack = { showAbout = false }
+                    )
+                }
+                showFenEditor -> {
+                    FenEditorScreen(
+                        onBack = { showFenEditor = false }
+                    )
+                }
+                else -> {
+                    MainScreen(
+                        tfLiteInterpreter = tfLiteInterpreter,
+                        croppedImageUri = null,
+                        isLoading = false,
+                        onRecognizeImage = { uri ->
+                            // Загружаем изображение и показываем ImageCropper
+                            loadImageAndShowCropper(uri, is3D = false)
+                        },
+                        onRecognize3D = { uri ->
+                            // Загружаем изображение и показываем ImageCropper для 3D
+                            loadImageAndShowCropper(uri, is3D = true)
+                        },
+                        onShowHistory = { showHistory = true },
+                        onShowAbout = { showAbout = true },
+                        onProcessVideo = { uri ->
+                            currentVideoUri = uri
+                            showVideoTrimmer = true
+                        },
+                        onFenEditor = { showFenEditor = true },
+                        viewModel = historyViewModel
+                    )
+                }
+            }
+        }
+    }
+
+    private fun loadImageAndShowCropper(uri: Uri, is3D: Boolean) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val bitmap = loadBitmapFromUri(uri)
+                withContext(Dispatchers.Main) {
+                    if (bitmap != null) {
+                        imageCropper.currentBitmap = bitmap
+                        currentImageUri = uri
+                        is3DRecognitionRequested = is3D
+                        showImageCropper = true
+
+                        // Загружаем сохраненные параметры обрезки
+                        imageCropper.loadCropParameters()
+
+                        // Автоматически запускаем авто-детекцию
+                        imageCropper.showCropRect = true
+                    } else {
+                        Toast.makeText(
+                            this@MainActivity,
+                            "Не удалось загрузить изображение",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Error loading image", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Ошибка загрузки изображения",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }
+    }
+
+    private fun process2DRecognitionFromCroppedImage() {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val croppedBitmap = imageCropper.autoCrop(imageCropper.currentBitmap!!)
+                val croppedUri = saveBitmapToTempFile(croppedBitmap, "cropped_2d_")
+
+                withContext(Dispatchers.Main) {
+                    if (croppedUri != null) {
+                        recognizeFromImage(
+                            this@MainActivity,
+                            tfLiteInterpreter,
+                            croppedUri,
+                            historyViewModel
+                        )
+                    } else {
+                        Toast.makeText(
+                            this@MainActivity,
+                            "Ошибка при обрезке изображения",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Error cropping image for 2D recognition", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Ошибка при обработке изображения",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }
+    }
+
+    private fun process3DRecognitionFromCroppedImage() {
+        isLoading3D = true
+
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val croppedBitmap = imageCropper.autoCrop(imageCropper.currentBitmap!!)
+
+                withContext(Dispatchers.Main) {
+                    if (chess3DRecognizer == null) {
+                        chess3DRecognizer = Chess3DRecognizer(this@MainActivity)
+                    }
+
+                    val result = chess3DRecognizer!!.recognize3DChessboard(croppedBitmap)
+
+                    isLoading3D = false
+                    is3DRecognitionRequested = false
+
+                    if (result.success) {
+                        val url = chess3DRecognizer!!.getLichessUrl(result.fen)
+
+                        // Сохраняем в историю
+                        historyViewModel.addHistoryItem("3d_recognition", url)
+
+                        Toast.makeText(
+                            this@MainActivity,
+                            "Распознано ${result.detections.size} фигур. Открываем Lichess...",
+                            Toast.LENGTH_LONG
+                        ).show()
+
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                        startActivity(intent)
+                    } else {
+                        Toast.makeText(
+                            this@MainActivity,
+                            "Ошибка распознавания: ${result.error ?: "неизвестная ошибка"}",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("MainActivity", "3D Recognition error", e)
+                withContext(Dispatchers.Main) {
+                    isLoading3D = false
+                    is3DRecognitionRequested = false
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Ошибка обработки: ${e.message}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+    }
+
+    private fun loadBitmapFromUri(uri: Uri): Bitmap? {
+        return try {
+            contentResolver.openInputStream(uri)?.use { stream ->
+                BitmapFactory.decodeStream(stream)
+            }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error loading bitmap from URI", e)
+            null
+        }
+    }
+
+    private fun saveBitmapToTempFile(bitmap: Bitmap, prefix: String): Uri? {
+        return try {
+            val file = File(cacheDir, "${prefix}${System.currentTimeMillis()}.jpg")
+            FileOutputStream(file).use { fos ->
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 90, fos)
+            }
+            Uri.fromFile(file)
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error saving bitmap to file", e)
+            null
+        }
+    }
+
+    private fun processVideoWithProgress(
+        uri: Uri,
+        startTime: Long,
+        endTime: Long,
+        frameIntervalMs: Long,
+        isBlackPlayer: Boolean,
+        coroutineScope: CoroutineScope,
+        onProgressUpdate: (Int, String) -> Unit,
+        onComplete: () -> Unit
+    ) {
+        coroutineScope.launch {
+            try {
+                videoProcessor = VideoToPGNProcessor(
+                    this@MainActivity,
+                    tfLiteInterpreter,
+                    imageCropper.cropRect,
+                    frameIntervalMs,
+                    isBlackPlayer,
+                    onProgressUpdate = onProgressUpdate
+                )
+
+                videoProcessor?.processVideoToPGN(uri, startTime, endTime) { pgn ->
+                    coroutineScope.launch {
+                        if (pgn.startsWith("Error:")) {
+                            Log.e("VideoProcessing", pgn)
+                        } else {
+                            val url = "https://lichess.org/paste?pgn=${Uri.encode(pgn)}"
+                            historyViewModel.addHistoryItem("video_processing", url)
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                            startActivity(intent)
+                        }
+                        onComplete()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("VideoProcessing", "Error processing video", e)
+                onComplete()
+            }
+        }
+    }
+
+    private fun loadModel() {
+        try {
+            val assetFileDescriptor = assets.openFd("chess_piece_recognition_model.tflite")
+            val inputStream = assetFileDescriptor.createInputStream()
+            val byteBuffer = inputStream.channel.map(
+                FileChannel.MapMode.READ_ONLY,
+                assetFileDescriptor.startOffset,
+                assetFileDescriptor.declaredLength
+            )
+            tfLiteInterpreter = Interpreter(byteBuffer, Interpreter.Options())
+        } catch (e: IOException) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun extractFirstFrame(videoUri: Uri, timeMs: Long = 0): Bitmap? {
+        return try {
+            val retriever = MediaMetadataRetriever().apply {
+                setDataSource(this@MainActivity, videoUri)
+            }
+            val bitmap = retriever.getFrameAtTime(timeMs * 1000, MediaMetadataRetriever.OPTION_CLOSEST)
+            retriever.release()
+            bitmap
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error extracting first frame", e)
+            null
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        try {
+            chessboardDetector.close()
+            chess3DRecognizer?.close()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+}
