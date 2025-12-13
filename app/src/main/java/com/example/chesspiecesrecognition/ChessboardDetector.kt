@@ -114,8 +114,8 @@ class ChessboardDetector(context: Context) {
         val detections = mutableListOf<Detection>()
 
         try {
-            // Для YOLOv8 с форматом [1, 5, 8400]
-            val outputArray = Array(1) { Array(5) { FloatArray(8400) } }
+            // Для YOLOv8 с форматом [1, 6, 8400]
+            val outputArray = Array(1) { Array(6) { FloatArray(8400) } }
 
             interpreter.runForMultipleInputsOutputs(
                 arrayOf(inputBuffer),
@@ -124,7 +124,7 @@ class ChessboardDetector(context: Context) {
 
             // Для отладки: логируем первые несколько значений
             Log.d("ChessboardDetector", "Первые значения вывода:")
-            for (i in 0 until min(5, 8400)) {
+            for (i in 0 until min(6, 8400)) {
                 Log.d("ChessboardDetector",
                     "Box $i: x=${outputArray[0][0][i]}, y=${outputArray[0][1][i]}, " +
                             "w=${outputArray[0][2][i]}, h=${outputArray[0][3][i]}, conf=${outputArray[0][4][i]}")
