@@ -42,8 +42,10 @@ android {
 
 dependencies {
 
-    implementation("androidx.compose.material3:material3:1.2.0")
+   // implementation("androidx.compose.material3:material3:1.2.0")
     implementation(libs.play.services.games)
+    implementation(libs.core.ktx)
+    testImplementation(libs.androidx.runner)
 
     val room_version = "2.6.1"
 
@@ -99,7 +101,15 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation(libs.litert)
     implementation(libs.play.services.cast.framework)
+
     testImplementation(libs.junit)
+    testImplementation("org.mockito:mockito-core:4.11.0")
+    testImplementation("org.mockito.kotlin:mockito-kotlin:4.1.0")
+    testImplementation("androidx.arch.core:core-testing:2.2.0")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.6.4")
+
+    androidTestImplementation ("androidx.arch.core:core-testing:2.2.0")
+    androidTestImplementation ("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.6.4")
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

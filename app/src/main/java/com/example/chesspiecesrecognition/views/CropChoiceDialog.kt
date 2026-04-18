@@ -177,28 +177,28 @@ fun CropChoiceDialog(
                 }
 
                 // Чекбокс "Запомнить выбор"
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Checkbox(
-                        checked = rememberCropChoice,
-                        onCheckedChange = { checked ->
-                            rememberCropChoice = checked
-                            sharedPreferences.edit()
-                                .putBoolean("remember_crop_choice", checked)
-                                .apply()
-                        }
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Запомнить мой выбор",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+//                Row(
+//                    modifier = Modifier
+//                        .fillMaxWidth()
+//                        .padding(bottom = 16.dp),
+//                    verticalAlignment = Alignment.CenterVertically
+//                ) {
+//                    Checkbox(
+//                        checked = rememberCropChoice,
+//                        onCheckedChange = { checked ->
+//                            rememberCropChoice = checked
+//                            sharedPreferences.edit()
+//                                .putBoolean("remember_crop_choice", checked)
+//                                .apply()
+//                        }
+//                    )
+//                    Spacer(modifier = Modifier.width(8.dp))
+//                    Text(
+//                        text = "Запомнить мой выбор",
+//                        style = MaterialTheme.typography.bodyMedium,
+//                        color = MaterialTheme.colorScheme.onSurfaceVariant
+//                    )
+//                }
 
                 // Кнопка отмены
                 OutlinedButton(
