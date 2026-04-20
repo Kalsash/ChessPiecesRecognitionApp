@@ -1,6 +1,7 @@
 package com.example.chesspiecesrecognition.views
 
 import android.graphics.RectF
+import android.content.res.Configuration
 import android.util.Log
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -12,13 +13,16 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.Button
@@ -48,9 +52,11 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -153,6 +159,10 @@ fun ImageCropperScreen(
     val scope = rememberCoroutineScope()
     val colorScheme = MaterialTheme.colorScheme
 
+    // Определяем ориентацию экрана
+    val configuration = LocalConfiguration.current
+    val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+
     var showPreview by remember { mutableStateOf(false) }
     var isBlackPlayer by remember { mutableStateOf(false) }
     var isAutoDetecting by remember { mutableStateOf(false) }
@@ -160,15 +170,20 @@ fun ImageCropperScreen(
     var showAutoDetectError by remember { mutableStateOf(false) }
     var detectionMessage by remember { mutableStateOf("Анализируем изображение...") }
 
+    // Адаптивные размеры в зависимости от ориентации
+    val adaptivePadding = if (isPortrait) 16.dp else 8.dp
+    val adaptiveSpacing = if (isPortrait) 8.dp else 4.dp
+    val previewAspectRatio = if (isPortrait) 1f else 0.75f
+
     // Загружаем настройку автоопределения при инициализации
     LaunchedEffect(Unit) {
         imageCropper.loadCropParameters()
     }
 
-    val cornerSizePx = with(density) { 20.dp.toPx() }
-    val dragCornerSizePx = with(density) { 40.dp.toPx() }
-    val rectStrokeWidthPx = with(density) { 2.dp.toPx() }
-    val cornerStrokeWidthPx = with(density) { 3.dp.toPx() }
+    val cornerSizePx = with(density) { if (isPortrait) 20.dp.toPx() else 16.dp.toPx() }
+    val dragCornerSizePx = with(density) { if (isPortrait) 40.dp.toPx() else 32.dp.toPx() }
+    val rectStrokeWidthPx = with(density) { if (isPortrait) 2.dp.toPx() else 1.5.dp.toPx() }
+    val cornerStrokeWidthPx = with(density) { if (isPortrait) 3.dp.toPx() else 2.dp.toPx() }
 
     // Отображаем индикатор загрузки при автоматической детекции
     if (isAutoDetecting) {
@@ -260,281 +275,590 @@ fun ImageCropperScreen(
         }
     }
 
+    // Адаптивный лейаут в зависимости от ориентации
+    if (isPortrait) {
+        // Вертикальный лейаут для портретной ориентации
+        PortraitLayout(
+            imageCropper = imageCropper,
+            showPreview = showPreview,
+            isBlackPlayer = isBlackPlayer,
+            autoDetectSuccess = autoDetectSuccess,
+            showAutoDetectError = showAutoDetectError,
+            isAutoDetecting = isAutoDetecting,
+            adaptivePadding = adaptivePadding,
+            adaptiveSpacing = adaptiveSpacing,
+            previewAspectRatio = previewAspectRatio,
+            cornerSizePx = cornerSizePx,
+            dragCornerSizePx = dragCornerSizePx,
+            rectStrokeWidthPx = rectStrokeWidthPx,
+            cornerStrokeWidthPx = cornerStrokeWidthPx,
+            onBlackPlayerChanged = { isBlackPlayer = it },
+            onResetAll = {
+                imageCropper.resetTransform()
+                imageCropper.cropRect = RectF(0.15f, 0.15f, 0.85f, 0.85f)
+                autoDetectSuccess = false
+                showAutoDetectError = false
+            },
+            onPreviewClick = {
+                imageCropper.currentBitmap?.let { bitmap ->
+                    imageCropper.croppedBitmap = imageCropper.autoCrop(bitmap)
+                    showPreview = true
+                }
+            },
+            onBackToEdit = { showPreview = false },
+            onConfirm = {
+                imageCropper.saveCropParameters()
+                onCropConfirmed(isBlackPlayer)
+            },
+            onCancel = onCancel
+        )
+    } else {
+        // Горизонтальный лейаут для ландшафтной ориентации
+        LandscapeLayout(
+            imageCropper = imageCropper,
+            showPreview = showPreview,
+            isBlackPlayer = isBlackPlayer,
+            autoDetectSuccess = autoDetectSuccess,
+            showAutoDetectError = showAutoDetectError,
+            isAutoDetecting = isAutoDetecting,
+            adaptivePadding = adaptivePadding,
+            adaptiveSpacing = adaptiveSpacing,
+            previewAspectRatio = previewAspectRatio,
+            cornerSizePx = cornerSizePx,
+            dragCornerSizePx = dragCornerSizePx,
+            rectStrokeWidthPx = rectStrokeWidthPx,
+            cornerStrokeWidthPx = cornerStrokeWidthPx,
+            onBlackPlayerChanged = { isBlackPlayer = it },
+            onResetAll = {
+                imageCropper.resetTransform()
+                imageCropper.cropRect = RectF(0.15f, 0.15f, 0.85f, 0.85f)
+                autoDetectSuccess = false
+                showAutoDetectError = false
+            },
+            onPreviewClick = {
+                imageCropper.currentBitmap?.let { bitmap ->
+                    imageCropper.croppedBitmap = imageCropper.autoCrop(bitmap)
+                    showPreview = true
+                }
+            },
+            onBackToEdit = { showPreview = false },
+            onConfirm = {
+                imageCropper.saveCropParameters()
+                onCropConfirmed(isBlackPlayer)
+            },
+            onCancel = onCancel
+        )
+    }
+}
+
+@Composable
+private fun PortraitLayout(
+    imageCropper: ImageCropper,
+    showPreview: Boolean,
+    isBlackPlayer: Boolean,
+    autoDetectSuccess: Boolean,
+    showAutoDetectError: Boolean,
+    isAutoDetecting: Boolean,
+    adaptivePadding: Dp,
+    adaptiveSpacing: Dp,
+    previewAspectRatio: Float,
+    cornerSizePx: Float,
+    dragCornerSizePx: Float,
+    rectStrokeWidthPx: Float,
+    cornerStrokeWidthPx: Float,
+    onBlackPlayerChanged: (Boolean) -> Unit,
+    onResetAll: () -> Unit,
+    onPreviewClick: () -> Unit,
+    onBackToEdit: () -> Unit,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit
+) {
     Column(
         modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
+            .fillMaxSize()
+            .padding(adaptivePadding),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // Показываем сообщение об ошибке обнаружения
         if (showAutoDetectError) {
-            Card(
-                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = colorScheme.errorContainer
-                ),
+            AdaptiveErrorCard(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 16.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Warning,
-                        contentDescription = "Warning",
-                        tint = colorScheme.error,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = "Шахматная доска не найдена\nНастройте область вручную",
-                        color = colorScheme.onErrorContainer,
-                        fontSize = 14.sp
-                    )
-                }
-            }
+                    .padding(bottom = adaptivePadding)
+            )
         }
 
+        // Заголовок
         Text(
             text = if (showPreview) "Предпросмотр обрезки" else "Настройте область обрезки",
             style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(bottom = 16.dp)
+            modifier = Modifier.padding(bottom = adaptivePadding),
+            textAlign = TextAlign.Center
         )
 
-        Box(
+        // Область изображения
+        ImageCropperArea(
+            imageCropper = imageCropper,
+            showPreview = showPreview,
+            autoDetectSuccess = autoDetectSuccess,
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(1f)
-                .onSizeChanged { size ->
-                    imageCropper.containerSize = Size(size.width.toFloat(), size.height.toFloat())
-                    imageCropper.calculateImageDisplaySize(
-                        Size(size.width.toFloat(), size.height.toFloat()),
-                        imageCropper.currentBitmap
-                    )
-                }
-                .pointerInput(showPreview) {
-                    if (imageCropper.showCropRect && !showPreview) {
-                        // Обработка масштабирования изображения (двумя пальцами)
-                        detectTransformGestures { centroid, pan, zoom, rotation ->
-                            imageCropper.handleTransformGesture(centroid, pan, zoom, rotation)
-                        }
-                    }
-                }
-                .pointerInput(showPreview) {
-                    if (imageCropper.showCropRect && !showPreview) {
-                        // Обработка перетаскивания для изменения области обрезки (одним пальцем)
-                        detectDragGestures(
-                            onDragStart = { start ->
-                                imageCropper.handleDragStart(start, dragCornerSizePx)
-                            },
-                            onDrag = { change, dragAmount ->
-                                imageCropper.handleDrag(dragAmount)
-                            },
-                            onDragEnd = { imageCropper.handleDragEnd() }
-                        )
-                    }
-                }
-        ) {
-            if (showPreview) {
-                imageCropper.croppedBitmap?.let { bitmap ->
-                    Image(
-                        bitmap = bitmap.asImageBitmap(),
-                        contentDescription = "Предпросмотр обрезки",
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Fit
-                    )
-                }
-            } else {
-                imageCropper.currentBitmap?.let { bitmap ->
-                    // Отображаем изображение с учетом масштаба и смещения
-                    Canvas(modifier = Modifier.fillMaxSize()) {
-                        val (offset, size) = imageCropper.getImageDrawParams()
+                .aspectRatio(previewAspectRatio),
+            cornerSizePx = cornerSizePx,
+            dragCornerSizePx = dragCornerSizePx,
+            rectStrokeWidthPx = rectStrokeWidthPx,
+            cornerStrokeWidthPx = cornerStrokeWidthPx
+        )
 
-                        // Рисуем изображение с помощью nativeCanvas для лучшего контроля
-                        drawIntoCanvas { canvas ->
-                            canvas.nativeCanvas.drawBitmap(
-                                bitmap,
-                                null,
-                                android.graphics.RectF(
-                                    offset.x,
-                                    offset.y,
-                                    offset.x + size.width,
-                                    offset.y + size.height
-                                ),
-                                null
-                            )
-                        }
-
-                        // Рисуем рамку обрезки поверх изображения
-                        if (imageCropper.showCropRect) {
-                            imageCropper.getDrawCropRectLambda(
-                                cornerSizePx,
-                                rectStrokeWidthPx,
-                                cornerStrokeWidthPx,
-                                rectColor = if (autoDetectSuccess) Color.Green else Color.Red,
-                                cornerColor = if (autoDetectSuccess) Color.Green else Color.Blue,
-                                gridColor = Color.White.copy(alpha = 0.7f),
-                                darkCellColor = Color.Black.copy(alpha = 0.15f)
-                            )()
-                        }
-                    }
-                } ?: run {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("Изображение не загружено")
-                    }
-                }
-            }
-        }
-
+        // Управляющие элементы под изображением
         if (!showPreview) {
-            // Секция управления масштабом и смещением
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                    .padding(vertical = adaptivePadding),
+                verticalArrangement = Arrangement.spacedBy(adaptiveSpacing)
             ) {
-                // Масштаб
-                Column {
-                    Text(
-                        text = "Масштаб: ${String.format("%.2f", imageCropper.scale)}",
-                        modifier = Modifier.padding(bottom = 8.dp)
+                // Контроли масштабирования
+                ScaleControls(imageCropper = imageCropper)
+
+                // Контроли смещения
+                OffsetControls(imageCropper = imageCropper)
+
+                // Чекбоксы
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(adaptiveSpacing)
+                ) {
+                    PlayerColorCheckbox(
+                        isBlackPlayer = isBlackPlayer,
+                        onCheckedChange = onBlackPlayerChanged
                     )
-                    Slider(
-                        value = imageCropper.scale,
-                        onValueChange = { imageCropper.updateScale(it) },
-                        valueRange = 0.5f..5f,
-                        steps = 4500,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+
+                    AutoDetectionCheckbox(imageCropper = imageCropper)
                 }
 
-                // Смещение по X (влево/вправо)
-                Column {
-                    Text(
-                        text = "Смещение X: ${String.format("%.1f", imageCropper.translation.x)}",
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
-                    Slider(
-                        value = imageCropper.translation.x,
-                        onValueChange = { imageCropper.updateTranslationX(it) },
-                        valueRange = -imageCropper.maxTranslationX..imageCropper.maxTranslationX,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            }
-
-            // Кнопка "Игрок играет черными фигурами"
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Checkbox(
-                    checked = isBlackPlayer,
-                    onCheckedChange = { isBlackPlayer = it }
+                // Кнопка сброса
+                ResetButton(
+                    onClick = onResetAll,
+                    modifier = Modifier.padding(top = adaptivePadding)
                 )
-                Text(
-                    text = "Игрок играет черными фигурами",
-                    modifier = Modifier.padding(start = 8.dp)
-                )
-            }
-
-            // Новый чекбокс для автоматического определения доски
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Checkbox(
-                    checked = imageCropper.autoDetectionEnabled,
-                    onCheckedChange = {
-                        imageCropper.autoDetectionEnabled = it
-                        // Сохраняем настройку при изменении
-                        imageCropper.saveCropParameters()
-                    }
-                )
-                Text(
-                    text = "Автоматическое определение шахматной доски",
-                    modifier = Modifier.padding(start = 8.dp)
-                )
-            }
-
-            // Кнопка "Сбросить все"
-            Button(
-                onClick = {
-                    imageCropper.resetTransform()
-                    imageCropper.cropRect = RectF(0.15f, 0.15f, 0.85f, 0.85f)
-                    autoDetectSuccess = false
-                    showAutoDetectError = false
-                },
-                modifier = Modifier
-                    .padding(bottom = 16.dp)
-                    .height(36.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = colorScheme.secondary
-                )
-            ) {
-                Text("Сбросить все", fontSize = 14.sp)
             }
         }
 
-        Row(
+        // Нижние кнопки
+        BottomButtons(
+            showPreview = showPreview,
+            isAutoDetecting = isAutoDetecting,
+            onPreviewClick = onPreviewClick,
+            onBackToEdit = onBackToEdit,
+            onConfirm = onConfirm,
+            onCancel = onCancel,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
+                .padding(top = adaptivePadding)
+        )
+    }
+}
+
+@Composable
+private fun LandscapeLayout(
+    imageCropper: ImageCropper,
+    showPreview: Boolean,
+    isBlackPlayer: Boolean,
+    autoDetectSuccess: Boolean,
+    showAutoDetectError: Boolean,
+    isAutoDetecting: Boolean,
+    adaptivePadding: Dp,
+    adaptiveSpacing: Dp,
+    previewAspectRatio: Float,
+    cornerSizePx: Float,
+    dragCornerSizePx: Float,
+    rectStrokeWidthPx: Float,
+    cornerStrokeWidthPx: Float,
+    onBlackPlayerChanged: (Boolean) -> Unit,
+    onResetAll: () -> Unit,
+    onPreviewClick: () -> Unit,
+    onBackToEdit: () -> Unit,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(adaptivePadding),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Левая часть - изображение
+        Column(
+            modifier = Modifier.weight(1f),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            if (showPreview) {
-                Button(
-                    onClick = { showPreview = false },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = colorScheme.secondary
-                    )
-                ) {
-                    Text("Назад к настройке")
-                }
-            } else {
-                Button(
-                    onClick = onCancel,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = colorScheme.error
-                    )
-                ) {
-                    Text("Отмена")
-                }
+            // Показываем сообщение об ошибке обнаружения
+            if (showAutoDetectError) {
+                AdaptiveErrorCard(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = adaptivePadding)
+                )
             }
 
-            Spacer(modifier = Modifier.width(16.dp))
+            // Заголовок
+            Text(
+                text = if (showPreview) "Предпросмотр" else "Настройка обрезки",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(bottom = adaptivePadding),
+                textAlign = TextAlign.Center
+            )
 
-            if (showPreview) {
-                Button(
-                    onClick = {
-                        imageCropper.saveCropParameters()
-                        onCropConfirmed(isBlackPlayer)
-                    }
+            // Область изображения
+            ImageCropperArea(
+                imageCropper = imageCropper,
+                showPreview = showPreview,
+                autoDetectSuccess = autoDetectSuccess,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(previewAspectRatio),
+                cornerSizePx = cornerSizePx,
+                dragCornerSizePx = dragCornerSizePx,
+                rectStrokeWidthPx = rectStrokeWidthPx,
+                cornerStrokeWidthPx = cornerStrokeWidthPx
+            )
+        }
+
+        Spacer(modifier = Modifier.width(adaptivePadding))
+
+        // Правая часть - элементы управления
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight(),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            if (!showPreview) {
+                Column(
+                    modifier = Modifier
+                        .verticalScroll(rememberScrollState())
+                        .weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(adaptiveSpacing)
                 ) {
-                    Text("Подтвердить и обработать")
+                    // Контроли масштабирования
+                    ScaleControls(imageCropper = imageCropper)
+
+                    // Контроли смещения
+                    OffsetControls(imageCropper = imageCropper)
+
+                    // Чекбоксы
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(adaptiveSpacing)
+                    ) {
+                        PlayerColorCheckbox(
+                            isBlackPlayer = isBlackPlayer,
+                            onCheckedChange = onBlackPlayerChanged
+                        )
+
+                        AutoDetectionCheckbox(imageCropper = imageCropper)
+                    }
+
+                    // Кнопка сброса
+                    ResetButton(
+                        onClick = onResetAll,
+                        modifier = Modifier.padding(top = adaptivePadding)
+                    )
                 }
             } else {
-                Button(
-                    onClick = {
-                        imageCropper.currentBitmap?.let { bitmap ->
-                            imageCropper.croppedBitmap = imageCropper.autoCrop(bitmap)
-                            showPreview = true
-                        }
-                    },
-                    enabled = !isAutoDetecting
-                ) {
-                    Text("Предпросмотр")
+                // В режиме предпросмотра оставляем пустое пространство
+                Spacer(modifier = Modifier.weight(1f))
+            }
+
+            // Нижние кнопки
+            BottomButtons(
+                showPreview = showPreview,
+                isAutoDetecting = isAutoDetecting,
+                onPreviewClick = onPreviewClick,
+                onBackToEdit = onBackToEdit,
+                onConfirm = onConfirm,
+                onCancel = onCancel,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}
+
+@Composable
+private fun ImageCropperArea(
+    imageCropper: ImageCropper,
+    showPreview: Boolean,
+    autoDetectSuccess: Boolean,
+    modifier: Modifier,
+    cornerSizePx: Float,
+    dragCornerSizePx: Float,
+    rectStrokeWidthPx: Float,
+    cornerStrokeWidthPx: Float
+) {
+    Box(
+        modifier = modifier
+            .onSizeChanged { size ->
+                imageCropper.containerSize = Size(size.width.toFloat(), size.height.toFloat())
+                imageCropper.calculateImageDisplaySize(
+                    Size(size.width.toFloat(), size.height.toFloat()),
+                    imageCropper.currentBitmap
+                )
+            }
+            .pointerInput(showPreview) {
+                if (imageCropper.showCropRect && !showPreview) {
+                    // Обработка масштабирования изображения (двумя пальцами)
+                    detectTransformGestures { centroid, pan, zoom, rotation ->
+                        imageCropper.handleTransformGesture(centroid, pan, zoom, rotation)
+                    }
                 }
+            }
+            .pointerInput(showPreview) {
+                if (imageCropper.showCropRect && !showPreview) {
+                    // Обработка перетаскивания для изменения области обрезки (одним пальцем)
+                    detectDragGestures(
+                        onDragStart = { start ->
+                            imageCropper.handleDragStart(start, dragCornerSizePx)
+                        },
+                        onDrag = { change, dragAmount ->
+                            imageCropper.handleDrag(dragAmount)
+                        },
+                        onDragEnd = { imageCropper.handleDragEnd() }
+                    )
+                }
+            }
+    ) {
+        if (showPreview) {
+            imageCropper.croppedBitmap?.let { bitmap ->
+                Image(
+                    bitmap = bitmap.asImageBitmap(),
+                    contentDescription = "Предпросмотр обрезки",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit
+                )
+            }
+        } else {
+            imageCropper.currentBitmap?.let { bitmap ->
+                // Отображаем изображение с учетом масштаба и смещения
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val (offset, size) = imageCropper.getImageDrawParams()
+
+                    // Рисуем изображение с помощью nativeCanvas для лучшего контроля
+                    drawIntoCanvas { canvas ->
+                        canvas.nativeCanvas.drawBitmap(
+                            bitmap,
+                            null,
+                            android.graphics.RectF(
+                                offset.x,
+                                offset.y,
+                                offset.x + size.width,
+                                offset.y + size.height
+                            ),
+                            null
+                        )
+                    }
+
+                    // Рисуем рамку обрезки поверх изображения
+                    if (imageCropper.showCropRect) {
+                        imageCropper.getDrawCropRectLambda(
+                            cornerSizePx,
+                            rectStrokeWidthPx,
+                            cornerStrokeWidthPx,
+                            rectColor = if (autoDetectSuccess) Color.Green else Color.Red,
+                            cornerColor = if (autoDetectSuccess) Color.Green else Color.Blue,
+                            gridColor = Color.White.copy(alpha = 0.7f),
+                            darkCellColor = Color.Black.copy(alpha = 0.15f)
+                        )()
+                    }
+                }
+            } ?: run {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("Изображение не загружено", textAlign = TextAlign.Center)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AdaptiveErrorCard(modifier: Modifier = Modifier) {
+    val colorScheme = MaterialTheme.colorScheme
+
+    Card(
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = colorScheme.errorContainer
+        ),
+        modifier = modifier
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Warning,
+                contentDescription = "Warning",
+                tint = colorScheme.error,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "Шахматная доска не найдена\nНастройте область вручную",
+                color = colorScheme.onErrorContainer,
+                fontSize = 12.sp,
+                lineHeight = 14.sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun ScaleControls(imageCropper: ImageCropper) {
+    Column {
+        Text(
+            text = "Масштаб: ${String.format("%.2f", imageCropper.scale)}",
+            fontSize = 14.sp,
+            modifier = Modifier.padding(bottom = 4.dp)
+        )
+        Slider(
+            value = imageCropper.scale,
+            onValueChange = { imageCropper.updateScale(it) },
+            valueRange = 0.5f..2.2f,
+            steps = 4500,
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+@Composable
+private fun OffsetControls(imageCropper: ImageCropper) {
+    Column {
+        Text(
+            text = "Смещение X: ${String.format("%.1f", imageCropper.translation.x)}",
+            fontSize = 14.sp,
+            modifier = Modifier.padding(bottom = 4.dp)
+        )
+        Slider(
+            value = imageCropper.translation.x,
+            onValueChange = { imageCropper.updateTranslationX(it) },
+            valueRange = -imageCropper.maxTranslationX..imageCropper.maxTranslationX,
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+@Composable
+private fun PlayerColorCheckbox(
+    isBlackPlayer: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Checkbox(
+            checked = isBlackPlayer,
+            onCheckedChange = onCheckedChange,
+            modifier = Modifier.size(20.dp)
+        )
+        Text(
+            text = "Игрок играет черными фигурами",
+            fontSize = 14.sp,
+            modifier = Modifier.padding(start = 4.dp)
+        )
+    }
+}
+
+@Composable
+private fun AutoDetectionCheckbox(imageCropper: ImageCropper) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Checkbox(
+            checked = imageCropper.autoDetectionEnabled,
+            onCheckedChange = {
+                imageCropper.autoDetectionEnabled = it
+                // Сохраняем настройку при изменении
+                imageCropper.saveCropParameters()
+            },
+            modifier = Modifier.size(20.dp)
+        )
+        Text(
+            text = "Автоопределение доски",
+            fontSize = 14.sp,
+            modifier = Modifier.padding(start = 4.dp)
+        )
+    }
+}
+
+@Composable
+private fun ResetButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Button(
+        onClick = onClick,
+        modifier = modifier.height(32.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = MaterialTheme.colorScheme.secondary
+        )
+    ) {
+        Text("Сбросить все", fontSize = 12.sp)
+    }
+}
+
+@Composable
+private fun BottomButtons(
+    showPreview: Boolean,
+    isAutoDetecting: Boolean,
+    onPreviewClick: () -> Unit,
+    onBackToEdit: () -> Unit,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        if (showPreview) {
+            Button(
+                onClick = onBackToEdit,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.secondary
+                ),
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("Назад", fontSize = 14.sp)
+            }
+        } else {
+            Button(
+                onClick = onCancel,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error
+                ),
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("Отмена", fontSize = 14.sp)
+            }
+        }
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        if (showPreview) {
+            Button(
+                onClick = onConfirm,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("Подтвердить", fontSize = 14.sp)
+            }
+        } else {
+            Button(
+                onClick = onPreviewClick,
+                enabled = !isAutoDetecting,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("Предпросмотр", fontSize = 14.sp)
             }
         }
     }

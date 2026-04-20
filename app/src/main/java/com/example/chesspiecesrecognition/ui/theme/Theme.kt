@@ -9,29 +9,35 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 
 private val DarkColorScheme = darkColorScheme(
-    primary = Purple80,
-    secondary = PurpleGrey80,
-    tertiary = Pink80
-)
-
-private val LightColorScheme = lightColorScheme(
-    primary = Purple40,
-    secondary = PurpleGrey40,
-    tertiary = Pink40
-
-    /* Other default colors to override
-    background = Color(0xFFFFFBFE),
-    surface = Color(0xFFFFFBFE),
+    primary = Color(0xFF006D40), // Темно-зеленый
+    secondary = Color(0xFF4E6352),
+    tertiary = Color(0xFF3E5C6E),
+    background = Color(0xFF1A1C1A),
+    surface = Color(0xFF242724),
     onPrimary = Color.White,
     onSecondary = Color.White,
     onTertiary = Color.White,
-    onBackground = Color(0xFF1C1B1F),
-    onSurface = Color(0xFF1C1B1F),
-    */
+    onBackground = Color(0xFFE1E3E1),
+    onSurface = Color(0xFFE1E3E1),
 )
+
+private val LightColorScheme = lightColorScheme(
+    primary = Color(0xFF006D40), // Темно-зеленый
+    secondary = Color(0xFF4E6352),
+    tertiary = Color(0xFF3E5C6E),
+    background = Color(0xFFF8FCF8),
+    surface = Color(0xFFFFFFFF),
+    onPrimary = Color.White,
+    onSecondary = Color.White,
+    onTertiary = Color.White,
+    onBackground = Color(0xFF1A1C1A),
+    onSurface = Color(0xFF1A1C1A),
+)
+
 
 @Composable
 fun ChessPiecesRecognitionTheme(

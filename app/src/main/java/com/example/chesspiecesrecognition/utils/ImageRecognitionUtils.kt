@@ -160,6 +160,7 @@ fun recognizeFromImage(context: Context, tfLiteInterpreter: Interpreter, imageUr
 
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
         context.startActivity(intent)
+        (context as? MainActivity)?.onRecognitionComplete()
 
     } catch (e: Exception) {
         e.printStackTrace()
