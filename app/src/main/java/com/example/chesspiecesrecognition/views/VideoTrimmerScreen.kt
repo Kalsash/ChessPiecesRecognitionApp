@@ -2,6 +2,8 @@ package com.example.chesspiecesrecognition
 
 import android.net.Uri
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,14 +20,19 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import androidx.compose.ui.platform.LocalConfiguration
 
 @Composable
 fun VideoTrimmerScreen(
     videoUri: Uri,
-    onTrimConfirmed: (Long, Long, Any?) -> Unit, // Добавляем intervalMs как третий параметр
+    onTrimConfirmed: (Long, Long, Any?) -> Unit,
     onCancel: () -> Unit
 ) {
     val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+    val screenWidth = configuration.screenWidthDp.dp
+    val isLandscape = configuration.screenWidthDp > configuration.screenHeightDp
+
     var duration by remember { mutableStateOf(10000L) }
     var startTime by remember { mutableStateOf(0L) }
     var endTime by remember { mutableStateOf(10000L) }
@@ -40,18 +47,17 @@ fun VideoTrimmerScreen(
     var endTimeError by remember { mutableStateOf(false) }
 
     // Настройка интервала кадров
-    var frameIntervalMs by remember { mutableStateOf(1000L) } // Интервал по умолчанию 1 секунда
+    var frameIntervalMs by remember { mutableStateOf(1000L) }
     var frameIntervalText by remember { mutableStateOf("1000") }
     var frameIntervalError by remember { mutableStateOf(false) }
 
     // Таймер для отслеживания позиции видео
     LaunchedEffect(isPlaying) {
         while (true) {
-            delay(100) // Проверяем позицию каждые 100мс
+            delay(100)
             videoViewRef?.let { videoView ->
                 if (videoView.isPlaying) {
                     currentVideoPosition = videoView.currentPosition.toLong()
-                    // Автоматически останавливаем воспроизведение при достижении конца
                     if (currentVideoPosition >= endTime) {
                         videoView.pause()
                         videoView.seekTo(startTime.toInt())
@@ -67,7 +73,6 @@ fun VideoTrimmerScreen(
     LaunchedEffect(startTime) {
         startTimeText = formatTimeWithMillis(startTime)
         startTimeError = false
-        // Немедленно перематываем видео
         videoViewRef?.seekTo(startTime.toInt())
         currentVideoPosition = startTime
     }
@@ -119,7 +124,7 @@ fun VideoTrimmerScreen(
         frameIntervalText = newInterval
         try {
             val interval = newInterval.toLong()
-            if (interval in 100..5000) { // Ограничиваем от 100мс до 5 секунд
+            if (interval in 100..5000) {
                 frameIntervalMs = interval
                 frameIntervalError = false
             } else {
@@ -130,272 +135,620 @@ fun VideoTrimmerScreen(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = "Обрежьте видео по времени",
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
+    // Адаптивный padding
+    val adaptivePadding = when {
+        screenWidth < 360.dp -> 8.dp
+        screenWidth < 600.dp -> 12.dp
+        else -> 16.dp
+    }
 
-        AndroidView(
-            factory = { ctx ->
-                VideoView(ctx).apply {
-                    setVideoURI(videoUri)
-                    setOnPreparedListener { mp ->
-                        val videoDuration = mp.duration.toLong()
-                        duration = videoDuration
-                        endTime = videoDuration
-                        endTimeText = formatTimeWithMillis(endTime)
-                        videoViewRef = this
+    // Адаптивная ширина элементов
+    val adaptiveElementWidth = when {
+        screenWidth < 360.dp -> 100.dp
+        screenWidth < 600.dp -> 110.dp
+        else -> 120.dp
+    }
 
-                        // Устанавливаем начальную позицию
-                        seekTo(startTime.toInt())
+    // Адаптивный размер шрифта
+    val adaptiveTitleSize = when {
+        screenWidth < 360.dp -> 16.sp
+        screenWidth < 600.dp -> 18.sp
+        else -> 20.sp
+    }
+
+    val adaptiveBodySize = when {
+        screenWidth < 360.dp -> 12.sp
+        screenWidth < 600.dp -> 14.sp
+        else -> 16.sp
+    }
+
+    val adaptiveSmallSize = when {
+        screenWidth < 360.dp -> 10.sp
+        screenWidth < 600.dp -> 11.sp
+        else -> 12.sp
+    }
+
+    // Ландшафтный режим
+    if (isLandscape) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(adaptivePadding)
+        ) {
+            // Левая колонка - видео и управление
+            Column(
+                modifier = Modifier.weight(0.6f),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "Обрежьте видео по времени",
+                    style = MaterialTheme.typography.titleMedium.copy(fontSize = adaptiveTitleSize),
+                    modifier = Modifier.padding(bottom = adaptivePadding)
+                )
+
+                AndroidView(
+                    factory = { ctx ->
+                        VideoView(ctx).apply {
+                            setVideoURI(videoUri)
+                            setOnPreparedListener { mp ->
+                                val videoDuration = mp.duration.toLong()
+                                duration = videoDuration
+                                endTime = videoDuration
+                                endTimeText = formatTimeWithMillis(endTime)
+                                videoViewRef = this
+                                seekTo(startTime.toInt())
+                            }
+                            setOnCompletionListener {
+                                isPlaying = false
+                                seekTo(startTime.toInt())
+                                currentVideoPosition = startTime
+                            }
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(16f / 9f)
+                )
+
+                // Индикатор текущей позиции
+                Text(
+                    text = "Текущая позиция: ${formatTimeWithMillis(currentVideoPosition)}",
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = adaptiveSmallSize),
+                    color = Color.Gray
+                )
+
+                Spacer(modifier = Modifier.height(adaptivePadding))
+
+                // Кнопки управления
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Button(
+                        onClick = {
+                            videoViewRef?.let { videoView ->
+                                if (isPlaying) {
+                                    videoView.pause()
+                                    isPlaying = false
+                                } else {
+                                    videoView.seekTo(startTime.toInt())
+                                    currentVideoPosition = startTime
+                                    videoView.start()
+                                    isPlaying = true
+                                }
+                            }
+                        },
+                        modifier = Modifier.padding(horizontal = adaptivePadding / 2)
+                    ) {
+                        Text(if (isPlaying) "Пауза" else "Воспроизвести")
                     }
 
-                    // Слушатель завершения воспроизведения
-                    setOnCompletionListener {
-                        isPlaying = false
-                        seekTo(startTime.toInt())
-                        currentVideoPosition = startTime
+                    Button(
+                        onClick = {
+                            videoViewRef?.apply {
+                                pause()
+                                seekTo(startTime.toInt())
+                            }
+                            isPlaying = false
+                            currentVideoPosition = startTime
+                        },
+                        modifier = Modifier.padding(horizontal = adaptivePadding / 2),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.secondary
+                        )
+                    ) {
+                        Text("Сброс")
                     }
                 }
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(16f / 9f)
-        )
+            }
 
-        // Индикатор текущей позиции
-        Text(
-            text = "Текущая позиция: ${formatTimeWithMillis(currentVideoPosition)}",
-            style = MaterialTheme.typography.bodySmall,
-            color = Color.Gray
-        )
+            // Правая колонка - настройки
+            Column(
+                modifier = Modifier
+                    .weight(0.4f)
+                    .padding(start = adaptivePadding)
+                    .verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Интервал кадров
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(vertical = adaptivePadding / 2)
+                ) {
+                    Text(
+                        text = "Интервал кадров",
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontSize = adaptiveBodySize,
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+                    TimeInputField(
+                        value = frameIntervalText,
+                        onValueChange = { updateFrameInterval(it) },
+                        isError = frameIntervalError,
+                        placeholder = "мс (100-5000)",
+                        modifier = Modifier.width(adaptiveElementWidth),
+                        textSize = adaptiveBodySize
+                    )
+                    if (frameIntervalError) {
+                        Text(
+                            text = "Диапазон: 100-5000 мс",
+                            color = MaterialTheme.colorScheme.error,
+                            fontSize = adaptiveSmallSize
+                        )
+                    } else {
+                        Text(
+                            text = "≈ ${((endTime - startTime) / frameIntervalMs).toInt()} кадров",
+                            color = Color.Gray,
+                            fontSize = adaptiveSmallSize
+                        )
+                    }
+                }
 
-        Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(adaptivePadding))
 
-        // Кнопки управления воспроизведением
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Button(
-                onClick = {
-                    videoViewRef?.let { videoView ->
-                        if (isPlaying) {
-                            videoView.pause()
-                            isPlaying = false
-                        } else {
-                            // КРИТИЧЕСКИ ВАЖНО: сначала перематываем, потом запускаем
-                            videoView.seekTo(startTime.toInt())
-                            currentVideoPosition = startTime
-                            videoView.start()
-                            isPlaying = true
+                // Время начала и окончания
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = "Начало",
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontSize = adaptiveBodySize,
+                                fontWeight = FontWeight.Bold
+                            )
+                        )
+                        TimeInputField(
+                            value = startTimeText,
+                            onValueChange = { newText ->
+                                startTimeText = newText
+                                parseTimeToMillis(newText)?.let { millis ->
+                                    updateStartTime(millis)
+                                } ?: run { startTimeError = true }
+                            },
+                            isError = startTimeError,
+                            placeholder = "мм:сс:мсс",
+                            modifier = Modifier.width(adaptiveElementWidth),
+                            textSize = adaptiveBodySize
+                        )
+                        if (startTimeError) {
+                            Text(
+                                text = "Некорректно",
+                                color = MaterialTheme.colorScheme.error,
+                                fontSize = adaptiveSmallSize
+                            )
                         }
                     }
-                },
-                modifier = Modifier.padding(horizontal = 8.dp)
-            ) {
-                Text(if (isPlaying) "Пауза" else "Воспроизвести")
-            }
 
-            Button(
-                onClick = {
-                    videoViewRef?.apply {
-                        pause()
-                        seekTo(startTime.toInt())
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = "Конец",
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontSize = adaptiveBodySize,
+                                fontWeight = FontWeight.Bold
+                            )
+                        )
+                        TimeInputField(
+                            value = endTimeText,
+                            onValueChange = { newText ->
+                                endTimeText = newText
+                                parseTimeToMillis(newText)?.let { millis ->
+                                    updateEndTime(millis)
+                                } ?: run { endTimeError = true }
+                            },
+                            isError = endTimeError,
+                            placeholder = "мм:сс:мсс",
+                            modifier = Modifier.width(adaptiveElementWidth),
+                            textSize = adaptiveBodySize
+                        )
+                        if (endTimeError) {
+                            Text(
+                                text = "Некорректно",
+                                color = MaterialTheme.colorScheme.error,
+                                fontSize = adaptiveSmallSize
+                            )
+                        }
                     }
-                    isPlaying = false
-                    currentVideoPosition = startTime
-                },
-                modifier = Modifier.padding(horizontal = 8.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.secondary
+                }
+
+                Spacer(modifier = Modifier.height(adaptivePadding))
+
+                // Слайдеры
+                Column(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Начало: ${formatTimeWithMillis(startTime)}",
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontSize = adaptiveBodySize,
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+                    Slider(
+                        value = if (duration > 0) startTime.toFloat() / duration.toFloat() else 0f,
+                        onValueChange = { value ->
+                            val newTime = (value * duration).toLong().coerceIn(0L, endTime - 1000L)
+                            updateStartTime(newTime)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Text(
+                        text = "Конец: ${formatTimeWithMillis(endTime)}",
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontSize = adaptiveBodySize,
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+                    Slider(
+                        value = if (duration > 0) endTime.toFloat() / duration.toFloat() else 0f,
+                        onValueChange = { value ->
+                            val newTime = (value * duration).toLong().coerceIn(startTime + 1000L, duration)
+                            updateEndTime(newTime)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(adaptivePadding))
+
+                // Информация о диапазоне
+                Text(
+                    text = "Диапазон: ${formatTimeWithMillis(startTime)} - ${formatTimeWithMillis(endTime)}",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = adaptiveBodySize),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
                 )
-            ) {
-                Text("Сброс")
+
+                Text(
+                    text = "Длительность: ${formatTimeWithMillis(endTime - startTime)}",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = adaptiveBodySize),
+                    color = Color.Blue,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(adaptivePadding * 1.5f))
+
+                // Кнопки действий
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Button(
+                        onClick = onCancel,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error
+                        ),
+                        modifier = Modifier.weight(0.48f)
+                    ) {
+                        Text("Отмена")
+                    }
+
+                    Spacer(modifier = Modifier.width(adaptivePadding / 2))
+
+                    Button(
+                        onClick = { onTrimConfirmed(startTime, endTime, frameIntervalMs) },
+                        enabled = endTime - startTime > 1000 && !startTimeError && !endTimeError && !frameIntervalError,
+                        modifier = Modifier.weight(0.48f)
+                    ) {
+                        Text(
+                            text = if (screenWidth < 400.dp) "Далее" else "Продолжить",
+                            fontSize = adaptiveBodySize
+                        )
+                    }
+                }
             }
         }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Настройка интервала кадров
+    } else {
+        // Портретный режим (оригинальный, но адаптированный)
         Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(vertical = 8.dp)
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(adaptivePadding)
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = "Интервал извлечения кадров",
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Bold
+                text = "Обрежьте видео по времени",
+                style = MaterialTheme.typography.titleMedium.copy(fontSize = adaptiveTitleSize),
+                modifier = Modifier.padding(bottom = adaptivePadding)
             )
-            Spacer(modifier = Modifier.height(4.dp))
-            TimeInputField(
-                value = frameIntervalText,
-                onValueChange = { newText ->
-                    updateFrameInterval(newText)
+
+            AndroidView(
+                factory = { ctx ->
+                    VideoView(ctx).apply {
+                        setVideoURI(videoUri)
+                        setOnPreparedListener { mp ->
+                            val videoDuration = mp.duration.toLong()
+                            duration = videoDuration
+                            endTime = videoDuration
+                            endTimeText = formatTimeWithMillis(endTime)
+                            videoViewRef = this
+                            seekTo(startTime.toInt())
+                        }
+                        setOnCompletionListener {
+                            isPlaying = false
+                            seekTo(startTime.toInt())
+                            currentVideoPosition = startTime
+                        }
+                    }
                 },
-                isError = frameIntervalError,
-                placeholder = "мс (100-5000)",
-                modifier = Modifier.width(120.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(16f / 9f)
             )
-            if (frameIntervalError) {
-                Text(
-                    text = "Допустимый диапазон: 100-5000 мс",
-                    color = MaterialTheme.colorScheme.error,
-                    fontSize = 12.sp
-                )
-            } else {
-                Text(
-                    text = "≈ ${((endTime - startTime) / frameIntervalMs).toInt()} кадров",
-                    color = Color.Gray,
-                    fontSize = 12.sp
-                )
+
+            // Индикатор текущей позиции
+            Text(
+                text = "Текущая позиция: ${formatTimeWithMillis(currentVideoPosition)}",
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = adaptiveSmallSize),
+                color = Color.Gray
+            )
+
+            Spacer(modifier = Modifier.height(adaptivePadding))
+
+            // Кнопки управления
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Button(
+                    onClick = {
+                        videoViewRef?.let { videoView ->
+                            if (isPlaying) {
+                                videoView.pause()
+                                isPlaying = false
+                            } else {
+                                videoView.seekTo(startTime.toInt())
+                                currentVideoPosition = startTime
+                                videoView.start()
+                                isPlaying = true
+                            }
+                        }
+                    },
+                    modifier = Modifier.padding(horizontal = adaptivePadding / 2)
+                ) {
+                    Text(if (isPlaying) "Пауза" else "Воспроизвести")
+                }
+
+                Button(
+                    onClick = {
+                        videoViewRef?.apply {
+                            pause()
+                            seekTo(startTime.toInt())
+                        }
+                        isPlaying = false
+                        currentVideoPosition = startTime
+                    },
+                    modifier = Modifier.padding(horizontal = adaptivePadding / 2),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.secondary
+                    )
+                ) {
+                    Text("Сброс")
+                }
             }
-        }
 
-        Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(adaptivePadding))
 
-        // Поля для точного ввода времени
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+            // Интервал кадров
             Column(
-                horizontalAlignment = Alignment.CenterHorizontally
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(vertical = adaptivePadding / 2)
             ) {
                 Text(
-                    text = "Начало времени",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold
+                    text = "Интервал извлечения кадров",
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontSize = adaptiveBodySize,
+                        fontWeight = FontWeight.Bold
+                    )
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 TimeInputField(
-                    value = startTimeText,
-                    onValueChange = { newText ->
-                        startTimeText = newText
-                        parseTimeToMillis(newText)?.let { millis ->
-                            updateStartTime(millis)
-                        } ?: run {
-                            startTimeError = true
-                        }
-                    },
-                    isError = startTimeError,
-                    placeholder = "мм:сс:мсс"
+                    value = frameIntervalText,
+                    onValueChange = { updateFrameInterval(it) },
+                    isError = frameIntervalError,
+                    placeholder = "мс (100-5000)",
+                    modifier = Modifier.width(adaptiveElementWidth),
+                    textSize = adaptiveBodySize
                 )
-                if (startTimeError) {
+                if (frameIntervalError) {
                     Text(
-                        text = "Некорректное время",
+                        text = "Допустимый диапазон: 100-5000 мс",
                         color = MaterialTheme.colorScheme.error,
-                        fontSize = 12.sp
+                        fontSize = adaptiveSmallSize
+                    )
+                } else {
+                    Text(
+                        text = "≈ ${((endTime - startTime) / frameIntervalMs).toInt()} кадров",
+                        color = Color.Gray,
+                        fontSize = adaptiveSmallSize
                     )
                 }
             }
 
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally
+            Spacer(modifier = Modifier.height(adaptivePadding))
+
+            // Поля для точного ввода времени
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                Text(
-                    text = "Конец времени",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                TimeInputField(
-                    value = endTimeText,
-                    onValueChange = { newText ->
-                        endTimeText = newText
-                        parseTimeToMillis(newText)?.let { millis ->
-                            updateEndTime(millis)
-                        } ?: run {
-                            endTimeError = true
-                        }
-                    },
-                    isError = endTimeError,
-                    placeholder = "мм:сс:мсс"
-                )
-                if (endTimeError) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.weight(1f)
+                ) {
                     Text(
-                        text = "Некорректное время",
-                        color = MaterialTheme.colorScheme.error,
-                        fontSize = 12.sp
+                        text = "Начало",
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontSize = adaptiveBodySize,
+                            fontWeight = FontWeight.Bold
+                        )
                     )
+                    TimeInputField(
+                        value = startTimeText,
+                        onValueChange = { newText ->
+                            startTimeText = newText
+                            parseTimeToMillis(newText)?.let { millis ->
+                                updateStartTime(millis)
+                            } ?: run { startTimeError = true }
+                        },
+                        isError = startTimeError,
+                        placeholder = "мм:сс:мсс",
+                        modifier = Modifier.width(adaptiveElementWidth),
+                        textSize = adaptiveBodySize
+                    )
+                    if (startTimeError) {
+                        Text(
+                            text = "Некорректно",
+                            color = MaterialTheme.colorScheme.error,
+                            fontSize = adaptiveSmallSize
+                        )
+                    }
+                }
+
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = "Конец",
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontSize = adaptiveBodySize,
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+                    TimeInputField(
+                        value = endTimeText,
+                        onValueChange = { newText ->
+                            endTimeText = newText
+                            parseTimeToMillis(newText)?.let { millis ->
+                                updateEndTime(millis)
+                            } ?: run { endTimeError = true }
+                        },
+                        isError = endTimeError,
+                        placeholder = "мм:сс:мсс",
+                        modifier = Modifier.width(adaptiveElementWidth),
+                        textSize = adaptiveBodySize
+                    )
+                    if (endTimeError) {
+                        Text(
+                            text = "Некорректно",
+                            color = MaterialTheme.colorScheme.error,
+                            fontSize = adaptiveSmallSize
+                        )
+                    }
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(adaptivePadding))
 
-        // Слайдер для начала времени
-        Text(
-            text = "Начало: ${formatTimeWithMillis(startTime)}",
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Bold
-        )
-        Slider(
-            value = if (duration > 0) startTime.toFloat() / duration.toFloat() else 0f,
-            onValueChange = { value ->
-                val newTime = (value * duration).toLong().coerceIn(0L, endTime - 1000L)
-                updateStartTime(newTime)
-            },
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        // Слайдер для конца времени
-        Text(
-            text = "Конец: ${formatTimeWithMillis(endTime)}",
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Bold
-        )
-        Slider(
-            value = if (duration > 0) endTime.toFloat() / duration.toFloat() else 0f,
-            onValueChange = { value ->
-                val newTime = (value * duration).toLong().coerceIn(startTime + 1000L, duration)
-                updateEndTime(newTime)
-            },
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Text(
-            text = "Диапазон: ${formatTimeWithMillis(startTime)} - ${formatTimeWithMillis(endTime)}",
-            style = MaterialTheme.typography.bodyMedium
-        )
-
-        Text(
-            text = "Длительность: ${formatTimeWithMillis(endTime - startTime)}",
-            style = MaterialTheme.typography.bodyMedium,
-            color = Color.Blue
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Button(
-                onClick = onCancel,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.error
+            // Слайдер для начала времени
+            Text(
+                text = "Начало: ${formatTimeWithMillis(startTime)}",
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontSize = adaptiveBodySize,
+                    fontWeight = FontWeight.Bold
                 )
-            ) {
-                Text("Отмена")
-            }
+            )
+            Slider(
+                value = if (duration > 0) startTime.toFloat() / duration.toFloat() else 0f,
+                onValueChange = { value ->
+                    val newTime = (value * duration).toLong().coerceIn(0L, endTime - 1000L)
+                    updateStartTime(newTime)
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
 
-            Button(
-                onClick = { onTrimConfirmed(startTime, endTime, frameIntervalMs) },
-                enabled = endTime - startTime > 1000 && !startTimeError && !endTimeError && !frameIntervalError
+            // Слайдер для конца времени
+            Text(
+                text = "Конец: ${formatTimeWithMillis(endTime)}",
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontSize = adaptiveBodySize,
+                    fontWeight = FontWeight.Bold
+                )
+            )
+            Slider(
+                value = if (duration > 0) endTime.toFloat() / duration.toFloat() else 0f,
+                onValueChange = { value ->
+                    val newTime = (value * duration).toLong().coerceIn(startTime + 1000L, duration)
+                    updateEndTime(newTime)
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(adaptivePadding / 2))
+
+            // Информация о диапазоне
+            Text(
+                text = "Диапазон: ${formatTimeWithMillis(startTime)} - ${formatTimeWithMillis(endTime)}",
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = adaptiveBodySize)
+            )
+
+            Text(
+                text = "Длительность: ${formatTimeWithMillis(endTime - startTime)}",
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = adaptiveBodySize),
+                color = Color.Blue
+            )
+
+            Spacer(modifier = Modifier.height(adaptivePadding * 1.5f))
+
+            // Кнопки действий
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text("Продолжить к обрезке")
+                Button(
+                    onClick = onCancel,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error
+                    ),
+                    modifier = Modifier.weight(0.48f)
+                ) {
+                    Text("Отмена")
+                }
+
+                Spacer(modifier = Modifier.width(adaptivePadding / 2))
+
+                Button(
+                    onClick = { onTrimConfirmed(startTime, endTime, frameIntervalMs) },
+                    enabled = endTime - startTime > 1000 && !startTimeError && !endTimeError && !frameIntervalError,
+                    modifier = Modifier.weight(0.48f)
+                ) {
+                    Text(
+                        text = if (screenWidth < 400.dp) "Далее" else "Продолжить",
+                        fontSize = adaptiveBodySize
+                    )
+                }
             }
         }
     }
@@ -407,7 +760,8 @@ fun TimeInputField(
     onValueChange: (String) -> Unit,
     isError: Boolean = false,
     placeholder: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    textSize: androidx.compose.ui.unit.TextUnit = 16.sp
 ) {
     OutlinedTextField(
         value = value,
@@ -416,8 +770,11 @@ fun TimeInputField(
         singleLine = true,
         isError = isError,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        modifier = modifier.width(120.dp),
-        textStyle = MaterialTheme.typography.bodyMedium.copy(textAlign = TextAlign.Center)
+        modifier = modifier,
+        textStyle = MaterialTheme.typography.bodyMedium.copy(
+            textAlign = TextAlign.Center,
+            fontSize = textSize
+        )
     )
 }
 
@@ -437,18 +794,18 @@ private fun parseTimeToMillis(timeString: String): Long? {
     return try {
         val parts = timeString.split(":")
         when {
-            parts.size == 3 -> { // мм:сс:мсс
+            parts.size == 3 -> {
                 val minutes = parts[0].toLong()
                 val seconds = parts[1].toLong()
                 val millis = parts[2].toLong()
                 (minutes * 60 * 1000) + (seconds * 1000) + millis
             }
-            parts.size == 2 -> { // мм:сс
+            parts.size == 2 -> {
                 val minutes = parts[0].toLong()
                 val seconds = parts[1].toLong()
                 (minutes * 60 * 1000) + (seconds * 1000)
             }
-            parts.size == 1 -> { // только секунды
+            parts.size == 1 -> {
                 parts[0].toLong() * 1000
             }
             else -> null
