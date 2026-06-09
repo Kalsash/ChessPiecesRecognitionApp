@@ -1,6 +1,6 @@
 # ♔ Chess Pieces Recognition ♔
 
-Приложение для распознавания шахматных фигур / Chess piece recognition app
+Мобильное приложение для распознавания шахматных фигур / Android application for chess pieces recognition
 
 ---
 
